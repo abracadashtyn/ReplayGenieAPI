@@ -17,7 +17,8 @@ api.add_namespace(pokemon_ns, path='/pokemon')
 pokemon_base_species_model = api.model('PokemonReference', {
     'id': fields.Integer,
     'name': fields.String,
-    'pokedex_number': fields.Integer
+    'pokedex_number': fields.Integer,
+    'image_url': fields.String,
 })
 pokemon_model = api.model('PokemonModel', {
     'id': fields.Integer,
@@ -25,6 +26,7 @@ pokemon_model = api.model('PokemonModel', {
     'name': fields.String,
     'tier': fields.String,
     'types': fields.List(fields.Nested(pokemon_type_model)),
+    'image_url': fields.String,
     'base_species': fields.Nested(pokemon_base_species_model, allow_null=True,
                                   description='Base form if this is a variant (e.g., Alolan forms)')
 })
@@ -81,6 +83,7 @@ pokemon_form_model = api.model('PokemonForm', {
     'tier': fields.String,
     'types': fields.List(fields.Nested(pokemon_type_model)),
     'is_cosmetic_only': fields.Boolean(),
+    'image_url': fields.String,
 })
 pokemon_detail_model = api.inherit('PokemonDetail', pokemon_model, {
     'forms': fields.List(fields.Nested(pokemon_form_model)),

@@ -1,11 +1,12 @@
 import logging
-from datetime import datetime
+import os
 
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 from typing import Optional, List
-from flask import Blueprint
+from flask import Blueprint, current_app, url_for
 from app import db
+from app.utils import format_name_to_image_file
 
 pokemon_to_type = sa.Table(
     'pokemon_to_type',
@@ -25,7 +26,10 @@ class PokemonType(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
-            'name': self.name
+            'name': self.name,
+            'image_url': url_for(endpoint='static',
+                                 filename=f'/images/types/{format_name_to_image_file(self.name)}',
+                                 _external=True)
         }
 
     @classmethod
@@ -68,6 +72,9 @@ class Pokemon(db.Model):
             'is_nonstandard': self.is_nonstandard,
             'types': [x.to_dict() for x in self.types],
             'is_cosmetic_only': self.is_cosmetic_only,
+            'image_url': url_for(endpoint='static',
+                                 filename=f'/images/pokemon/{format_name_to_image_file(self.name)}',
+                                 _external=True)
         }
         if self.base_species_id is not None:
             pkmn_dict['base_species'] = {
@@ -101,7 +108,10 @@ class Item(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
-            'name': self.name
+            'name': self.name,
+            'image_url': url_for(endpoint='static',
+                     filename=f'/images/items/{format_name_to_image_file(self.name)}',
+                     _external=True)
         }
 
     @classmethod

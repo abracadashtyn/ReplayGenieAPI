@@ -14,6 +14,7 @@ api.add_namespace(items_ns, path='/items')
 item_model = api.model('Item', {
     'id': fields.Integer,
     'name': fields.String,
+    'image_url': fields.String,
 })
 item_list_response = api.model('ItemListResponse', {
     'success': fields.Boolean,

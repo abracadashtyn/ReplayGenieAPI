@@ -13,7 +13,8 @@ api.add_namespace(poke_type_ns, path='/types')
 """Fetch a list of all pokemon types"""
 pokemon_type_model = api.model('PokemonType', {
     'id': fields.Integer(required=True),
-    'name': fields.String(required=True)
+    'name': fields.String(required=True),
+    'image_url': fields.String,
 })
 pokemon_type_list_response = api.model('PokemonTypeListResponse', {
     'success': fields.Boolean,
