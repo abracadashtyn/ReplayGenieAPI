@@ -72,9 +72,7 @@ class Pokemon(db.Model):
             'is_nonstandard': self.is_nonstandard,
             'types': [x.to_dict() for x in self.types],
             'is_cosmetic_only': self.is_cosmetic_only,
-            'image_url': url_for(endpoint='static',
-                                 filename=f'/images/pokemon/{format_name_to_image_file(self.name)}',
-                                 _external=True)
+            'image_url': self.get_image_url()
         }
         if self.base_species_id is not None:
             pkmn_dict['base_species'] = {
@@ -82,6 +80,13 @@ class Pokemon(db.Model):
                 'id': self.base_species.id
             }
         return pkmn_dict
+
+    def get_image_url(self):
+        # TODO add logic to return image for parent if child image does not exist
+        return url_for(endpoint='static',
+                filename=f'/images/pokemon/{format_name_to_image_file(self.name)}',
+                _external=True)
+
 
     @classmethod
     def get_or_create(cls,name: str, pokedex_number:int=None):

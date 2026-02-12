@@ -83,6 +83,7 @@ class MatchList(Resource):
                     'name': player_match_record.player.name,
                     'team': [{
                         'id': x.pokemon_id,
+                        'image_url': x.pokemon.get_image_url(),
                         'pokedex_number': x.pokemon.pokedex_number,
                         'name': x.pokemon.name,
                         'terra_type': x.terra_type.to_dict() if x.terra_type else None,
@@ -141,6 +142,7 @@ class MatchDetails(Resource):
                 'name': player_match.player.name,
                 'team': [{
                     'id': x.pokemon_id,
+                    'image_url': x.pokemon.get_image_url(),
                     'pokedex_number': x.pokemon.pokedex_number,
                     'name': x.pokemon.name,
                     'tier': x.pokemon.tier,
