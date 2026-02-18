@@ -40,15 +40,20 @@ class PokemonList(Resource):
     @pokemon_ns.doc('list_pokemon')
     @pokemon_ns.param('page', 'Page number', type='integer', default=1)
     @pokemon_ns.param('limit', 'Items per page', type='integer', default=50)
+    @pokemon_ns.param('exclude_illegal', 'Filters list so no pokemon from the illegal tier appear in results', type='boolean', default=True)
     @pokemon_ns.param('type_ids', 'Comma separated list of type IDs to filter pokemon on',type='string')
-    @pokemon_ns.param('pokedex_number', 'Pokedex number to filter pokemon on', type='integer')
     @pokemon_ns.param(name='name', description='Name of pokemon (full or partial) to filter results by', type='string')
     @pokemon_ns.response(500, 'Internal server error', error_response)
     @pokemon_ns.marshal_with(pokemon_list_response, code=200)
     def get(self):
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 50, type=int)
-        query = Pokemon.query.filter(Pokemon.is_cosmetic_only is False).order_by(Pokemon.pokedex_number, Pokemon.name)
+        query = Pokemon.query\
+            .filter(Pokemon.is_cosmetic_only == False)\
+            .order_by(Pokemon.pokedex_number, Pokemon.name)
+
+        if 'exclude_illegal' in request.args and (request.args['exclude_illegal'] is True or request.args['exclude_illegal'].lower() == "true"):
+            query = query.filter(Pokemon.tier != "Illegal")
 
         if 'type_ids' in request.args:
             try:
@@ -56,10 +61,6 @@ class PokemonList(Resource):
             except ValueError:
                 api.abort(400, 'Invalid type_ids')
             query = query.filter(Pokemon.types.any(PokemonType.id.in_(type_ids)))
-
-        if 'pokedex_number' in request.args:
-            pokedex_number = request.args.get('pokedex_number', type=int)
-            query = query.filter(Pokemon.pokedex_number == pokedex_number)
 
         if 'name' in request.args:
             search_string = request.args['name']
@@ -72,7 +73,6 @@ class PokemonList(Resource):
 
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for pokemon types: {e}')
-
 
 
 """Fetch details on on particular pokemon by ID"""

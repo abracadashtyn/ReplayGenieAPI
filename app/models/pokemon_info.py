@@ -25,15 +25,12 @@ class PokemonType(db.Model):
 
     def to_dict(self, is_tera=False):
         if is_tera:
-            print(f"this is a tera type request! Returning image URL {self.get_tera_image_url()}")
             return {
                 'id': self.id,
                 'name': self.name,
                 'image_url': self.get_tera_image_url()
             }
 
-
-        print(f"This is a normal type request! Returning image URL {self.get_image_url()}")
         return {
             'id': self.id,
             'name': self.name,
