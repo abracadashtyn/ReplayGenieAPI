@@ -87,19 +87,32 @@ class MatchList(Resource):
     @matches_ns.doc('list_matches')
     @matches_ns.param('page', 'Page number', type='integer', default=1)
     @matches_ns.param('limit', 'Items per page', type='integer', default=default_match_limit)
-    @matches_ns.param('format_id', 'Format ID', type='integer')
+    @matches_ns.param('format_id', 'Format ID', default=1, type='integer')
+    @matches_ns.param('rated_only', 'If true, returns only matches that are rated.', type='boolean', default=False)
+    @matches_ns.param('order_by', 'Sort results by time (newest to oldest) or rating (highest to lowest)',
+                      type='string', enum=['time', 'rating'], default='time')
     @matches_ns.response(500, 'Internal server error', error_response)
     @matches_ns.marshal_with(match_list_response, code=200)
     def get(self):
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', default_match_limit, type=int)
 
-        query = Match.query.order_by(Match.upload_time.desc())
+        query = Match.query
+
         if 'format_id' in request.args:
             format = request.args.get('format_id', type=int)
             query = query.filter(Match.format_id == format)
         else:
             query = query.filter(Match.format_id == current_app.config['CURRENT_FORMAT_ID'])
+
+        if 'rated_only' in request.args and request.args.get('rated_only') == 'true':
+            print("Requesting rated matches only")
+            query = query.filter(Match.rating.is_not(None))
+
+        if 'order_by' in request.args and request.args.get('order_by') == 'rating':
+            query = query.order_by(Match.rating.desc())
+        else:
+            query = query.order_by(Match.upload_time.desc())
 
         return query_and_format_matches(query, page, limit)
 
@@ -177,6 +190,13 @@ search_request_model = api.model('SearchModel', {
     'format_id': fields.Integer(example=1),
     'minimum_rating': fields.Integer(example=0),
     'pokemon': fields.List(fields.Nested(search_pokemon_request_model)),
+    'order_by': fields.String(
+        required=False,
+        enum=['time', 'rating'],
+        default='time',
+        example='time',
+        description='Sort results by time (most recent to oldest) or rating (highest first)'
+    )
 })
 @matches_ns.route('/search')
 class Search(Resource):
@@ -189,7 +209,8 @@ class Search(Resource):
         page = search_data['page'] if 'page' in search_data else 1
         limit = search_data['limit'] if 'limit' in search_data else default_match_limit
 
-        query = Match.query.order_by(Match.upload_time.desc())
+        query = Match.query
+
         if 'format_id' in search_data and search_data['format_id'] != "":
             query = query.filter(Match.format_id == search_data['format_id'])
         else:
@@ -210,5 +231,9 @@ class Search(Resource):
                 pokemon_query_chunks.append(PlayerMatch.pokemon.any(db.and_(*filter_conditions)))
             query = query.filter(Match.players.any(db.and_(*pokemon_query_chunks)))
 
-        print(f"will execute query {str(query.statement.compile(compile_kwargs={"literal_binds": True}))}")
+        if 'order_by' in search_data and search_data['order_by'] == 'rating':
+            query = query.order_by(Match.rating.desc())
+        else:
+            query = query.order_by(Match.upload_time.desc())
+
         return query_and_format_matches(query, page, limit)
