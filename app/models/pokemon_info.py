@@ -5,6 +5,8 @@ import sqlalchemy as sa
 import sqlalchemy.orm as so
 from typing import Optional, List
 from flask import Blueprint, current_app, url_for
+from sqlalchemy import func
+
 from app import db
 from app.utils import format_name_to_image_file
 
@@ -105,7 +107,8 @@ class Pokemon(db.Model):
 
     @classmethod
     def get_or_create(cls,name: str, pokedex_number:int=None):
-        record = cls.query.filter_by(name=name).first()
+        name_no_spaces = name.replace(' ', '')
+        record = cls.query.filter(func.replace(cls.name, ' ', '') == name_no_spaces).first()
         if record is None:
             record = cls(name=name, pokedex_number=pokedex_number)
             db.session.add(record)
@@ -136,7 +139,8 @@ class Item(db.Model):
 
     @classmethod
     def get_or_create(cls, name: str):
-        record = cls.query.filter_by(name=name).first()
+        name_no_spaces = name.replace(' ', '')
+        record = cls.query.filter(func.replace(cls.name, ' ', '') == name_no_spaces).first()
         if record is None:
             record = cls(name=name)
             db.session.add(record)
@@ -163,7 +167,8 @@ class Ability(db.Model):
 
     @classmethod
     def get_or_create(cls, name: str):
-        record = cls.query.filter_by(name=name).first()
+        name_no_spaces = name.replace(' ', '')
+        record = cls.query.filter(func.replace(cls.name, ' ', '') == name_no_spaces).first()
         if record is None:
             record = cls(name=name)
             db.session.add(record)
@@ -189,7 +194,8 @@ class Move(db.Model):
 
     @classmethod
     def get_or_create(cls, name: str):
-        record = cls.query.filter_by(name=name).first()
+        name_no_spaces = name.replace(' ', '')
+        record = cls.query.filter(func.replace(cls.name, ' ', '') == name_no_spaces).first()
         if record is None:
             record = cls(name=name)
             db.session.add(record)

@@ -174,7 +174,7 @@ search_pokemon_request_model = api.model('SearchPokemonModel', {
 search_request_model = api.model('SearchModel', {
     'limit': fields.Integer(example=default_match_limit),
     'page': fields.Integer(example=1),
-    'format_id': fields.Integer(example=current_app.config['CURRENT_FORMAT_ID']),
+    'format_id': fields.Integer(example=1),
     'minimum_rating': fields.Integer(example=0),
     'pokemon': fields.List(fields.Nested(search_pokemon_request_model)),
 })

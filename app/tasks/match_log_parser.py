@@ -25,6 +25,10 @@ class MatchLogParser:
     def clean_and_split_line(self, line):
         return line.lstrip('|').rstrip('|').split('|')
 
+    def camel_case_to_spaced(self, string):
+        # Inserts a space before any capital letter that is not at the start of the string
+        return re.sub(r'(?<!^)([A-Z])', r' \1', string)
+
     def get_sequence_in_set(self):
         bestof_line = None
         for line in self.log_lines:
@@ -135,11 +139,11 @@ class MatchLogParser:
 
                 # [2] = item the pokemon is holding
                 if pkmn_info[2] != "":
-                    pmp_record.item = Item.get_or_create(pkmn_info[2])
+                    pmp_record.item = Item.get_or_create(self.camel_case_to_spaced(pkmn_info[2]))
 
                 # [3] = ability
                 if pkmn_info[3] != "":
-                    pmp_record.ability = Ability.get_or_create(pkmn_info[3])
+                    pmp_record.ability = Ability.get_or_create(self.camel_case_to_spaced(pkmn_info[3]))
 
                 # [4] = moveset. Should always be present so raise exception if this field is blank.
                 if pkmn_info[4] == "":
@@ -147,7 +151,7 @@ class MatchLogParser:
 
                 moves = pkmn_info[4].split(',')
                 for move in moves:
-                    move_record = Move.get_or_create(move)
+                    move_record = Move.get_or_create(self.camel_case_to_spaced(move))
                     if move_record not in pmp_record.moves:
                         pmp_record.moves.append(move_record)
 
