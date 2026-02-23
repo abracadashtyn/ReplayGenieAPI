@@ -27,7 +27,7 @@ def scrape_new():
         return
 
     last_match_timestamp = last_match_timestamp.upload_time
-    print(f"Timestamp of last match scraped is {last_match_timestamp}")
+    print(f"Timestamp of last match scraped is {last_match_timestamp}. Scraping all matches more recent than this...")
 
     # query showdown api for all matches in desired format.
     list_replays_url = "https://replay.pokemonshowdown.com/search.json"
@@ -39,11 +39,10 @@ def scrape_new():
     else:
         matches_json = response.json()
 
+    match_count = 0
     while len(matches_json) > 0:
         for match_json in matches_json:
             if match_json["uploadtime"] >= last_match_timestamp:
-                print(f"Match with timestamp {match_json['uploadtime']} is newer than {last_match_timestamp}. "
-                      f"Will attempt to parse.")
                 try:
                     id_strings = match_json['id'].split("-")
                     if len(id_strings) != 2:
@@ -55,10 +54,11 @@ def scrape_new():
                         logging.error(f"Match ID {id_strings[1]} is not numeric; unsure how to handle. ")
                         exit(101)
 
-                    # check to see if a record for this match already exists
+                    # check to see if a record for this match already exists. It shouldn't, since we're comparing by
+                    # timestamp, but this is for the rare case where two separate matches have the same upload time.
+                    # if we find a match that already has a record, just continue.
                     match_record = Match.query.filter_by(showdown_id=showdown_id).first()
                     if match_record is None:
-                        print(f"Match record with showdown id {showdown_id} does not exist! Creating now.")
                         match_record = Match()
                         match_record.showdown_id = showdown_id
                         match_record.upload_time = match_json["uploadtime"]
@@ -67,9 +67,8 @@ def scrape_new():
                         match_record.format = game_format_record
                         db.session.add(match_record)
                         db.session.commit()
-                        print(f"Created new record for match with id {match_record.id}")
+                        match_count += 1
                     else:
-                        print( f"Record for match with showdown id {showdown_id} already exists with id {match_record.id}")
                         continue
 
                     # initialize a log parser to fetch and process the log of the game in question
@@ -102,14 +101,15 @@ def scrape_new():
                         f.write(f"showdown_id: {game_format_record.name}-{showdown_id}\nerror: {str(e)}\n\n")
 
             else:
-                print(f"Match with timestamp {match_json['uploadtime']} is older than {last_match_timestamp}. Exiting...")
+                print(f"Match with timestamp {match_json['uploadtime']} is older than {last_match_timestamp}."
+                      f"Match scraping is complete. Added {match_count} matches to database.")
                 return
 
         # 51 is the limit of matches that can be returned by this call, so if there are 51, there might be more results
         # on the next page. Query for those.
         if len(matches_json) == 51:
             params["before"] = matches_json[-1]['uploadtime']
-            print(f"will query for matches before {params['before']}")
+            print(f"Processed all results from this page, getting more matches before timestamp {params['before']}")
             response = requests.get(list_replays_url, params=params)
             if response.status_code != 200:
                 logging.error(f"Something went wrong with web request: {response}")
@@ -119,7 +119,6 @@ def scrape_new():
         else:
             print(f"There were {len(matches_json)} matches in these results, so we've seen everything")
             matches_json = []
-
 
 
 @showdown.command('scrape-one')
