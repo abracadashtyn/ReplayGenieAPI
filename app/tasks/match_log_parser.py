@@ -83,7 +83,7 @@ class MatchLogParser:
                           f"found in the log data.")
 
         for team in teams:
-            team_info = re.search('\|showteam\|(p[1,2])\|(.*?)](.*?)](.*?)](.*?)](.*?)](.*)', team)
+            team_info = re.search('\|showteam\|(p[1,2])\|(.*)', team)
             if team_info.group(1) == 'p1':
                 pm_record_id = p1_match_record_id
             elif team_info.group(1) == 'p2':
@@ -91,9 +91,9 @@ class MatchLogParser:
             else:
                 raise Exception(f"Not able to determine which player team record belongs to. Please check data format.")
 
-            for i in range(2, 8):
+            for pokemon_data in team_info.group(2).split(']'):
                 '''
-                will always be of format <pokemon_name>||<item>|<ability>|<moveset>|||<gender>|||<level>|,,,,,<tera_type>]
+                will always be of format <pokemon_name>||<item>|<ability>|<moveset>|||<gender>|||<level>|,,,,,<tera_type>
                 when split on |, 
                     [0]='<pokemon_name>'
                     [1]=''
@@ -112,7 +112,7 @@ class MatchLogParser:
                 TODO no documentation on this - dig through the code to find out? 
                 for now raise an exception if any one of these fields is non-null to manually check the data
                 '''
-                pkmn_info = [x for x in team_info.group(i).split('|')]
+                pkmn_info = [x for x in pokemon_data.split('|')]
 
                 if len(pkmn_info) != 12:
                     raise Exception(f"did not parse the expected 12 fields for pokemon team member: {pkmn_info}")
