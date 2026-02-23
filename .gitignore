@@ -10,3 +10,5 @@ venv/
 *.sqlite
 instance/
 /app/static/test_data/
+.env*
+/cronjobs/logs
