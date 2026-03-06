@@ -277,26 +277,28 @@ def scrape_type_images():
             with open(type_image_file, 'wb') as f:
                 f.write(type_image_response.content)
 
+def scrape_item_image(item_name):
+    item_image_base_url = 'https://www.serebii.net/itemdex/sprites/sv/'
+    serebii_formatted_name = ''.join([x.lower() for x in item_name if x.isalnum()])
+    item_image_file = os.path.join(current_app.config['ITEM_IMAGES_DIR'], format_name_to_image_file(item_name))
+    if not os.path.exists(item_image_file):
+        item_image_url = f'{item_image_base_url}{serebii_formatted_name}.png'
+        print(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching item image from {item_image_url}")
+        time.sleep(current_app.config['REQUEST_DELAY'])
+        item_image_response = requests.get(item_image_url, timeout=10)
+        if item_image_response.status_code != 200:
+            click.echo(f"ERROR: could not fetch pokemon image. CODE {item_image_response.status_code}: "
+                       f"{item_image_response.reason}")
+            return
+        with open(item_image_file, 'wb') as f:
+            f.write(item_image_response.content)
+
 
 @pokemon.command('scrape-item-images')
 def scrape_item_images():
-    item_image_base_url = 'https://www.serebii.net/itemdex/sprites/sv/'
     items = Item.query.all()
     for item in items:
-        serebii_formatted_name = ''.join([x.lower() for x in item.name if x.isalnum()])
-        item_image_file  = os.path.join(current_app.config['ITEM_IMAGES_DIR'], format_name_to_image_file(item.name))
-        if not os.path.exists(item_image_file):
-            item_image_url = f'{item_image_base_url}{serebii_formatted_name}.png'
-            print(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching item image from {item_image_url}")
-            time.sleep(current_app.config['REQUEST_DELAY'])
-            item_image_response = requests.get(item_image_url, timeout=10)
-            if item_image_response.status_code != 200:
-                click.echo(f"ERROR: could not fetch pokemon image. CODE {item_image_response.status_code}: "
-                           f"{item_image_response.reason}")
-                continue
-
-            with open(item_image_file, 'wb') as f:
-                f.write(item_image_response.content)
+        scrape_item_image(item.name)
 
 
 @pokemon.command('scrape-tera-types')
