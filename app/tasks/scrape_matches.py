@@ -81,10 +81,10 @@ def scrape_new():
                     player_1_match_record = PlayerMatch.get_or_create(player1_record.id, match_record.id)
                     player_2_match_record = PlayerMatch.get_or_create(player2_record.id, match_record.id)
                     winner = log_parser.get_winner_name()
-                    if winner == player1_record.name:
+                    if winner.lower() == player1_record.name.lower():
                         player_1_match_record.won_match = True
                         player_2_match_record.won_match = False
-                    elif winner == player2_record.name:
+                    elif winner.lower() == player2_record.name.lower():
                         player_1_match_record.won_match = False
                         player_2_match_record.won_match = True
                     else:
