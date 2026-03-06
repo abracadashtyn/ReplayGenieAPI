@@ -220,63 +220,73 @@ def scrape_showdown(local_mode, save_data):
 
         db.session.commit()
 
+""" Wrapper command to scrape all images using functions below"""
 @pokemon.command('scrape-images')
 @click.pass_context
 def scrape_images(ctx):
-    ctx.invoke(scrape_pokemon_images)
-    ctx.invoke(scrape_type_images)
-    ctx.invoke(scrape_item_images)
+    ctx.invoke(scrape_pokemon_images_cmd)
+    ctx.invoke(scrape_type_images_cmd)
+    ctx.invoke(scrape_item_images_cmd)
+    ctx.invoke(scrape_tera_type_images_cmd)
+
+
+""" Scrape pokemon images"""
+def scrape_pokemon_image(pokemon_record):
+    pokemon_image_base_url = "https://play.pokemonshowdown.com/sprites/home-centered/"
+
+    showdown_formatted_name = ''.join([x.lower() for x in pokemon_record.name if x.isalnum()])
+    if pokemon_record.base_species is not None:
+        base_species_formatted_name = ''.join([x.lower() for x in pokemon_record.base_species.name if x.isalnum()])
+        name_regex = re.search(f'({base_species_formatted_name})(.*)', showdown_formatted_name)
+        if name_regex is not None:
+            showdown_formatted_name = f'{name_regex.group(1)}-{name_regex.group(2)}'
+        else:
+            raise Exception(
+                f"Could not find base species name {base_species_formatted_name} in {showdown_formatted_name}")
+
+    # check if the image already exists, and fetch if not
+    pokemon_image_file = os.path.join(current_app.config['POKEMON_IMAGES_DIR'], format_name_to_image_file(pokemon_record.name))
+    if not os.path.exists(pokemon_image_file):
+        pokemon_image_url = f'{pokemon_image_base_url}{remove_accent_marks(showdown_formatted_name)}.png'
+        click.echo(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching pokemon image from {pokemon_image_url}")
+        time.sleep(current_app.config['REQUEST_DELAY'])
+        pokemon_image_response = requests.get(pokemon_image_url, timeout=10)
+
+        if pokemon_image_response.status_code != 200:
+            click.echo(f"ERROR: could not fetch pokemon image. CODE {pokemon_image_response.status_code}: "
+                       f"{pokemon_image_response.reason}")
+            return
+
+        with open(pokemon_image_file, 'wb') as f:
+            f.write(pokemon_image_response.content)
 
 @pokemon.command('scrape-pokemon-images')
-def scrape_pokemon_images():
-    pokemon_image_base_url = "https://play.pokemonshowdown.com/sprites/home-centered/"
+def scrape_pokemon_images_cmd():
     pokemon = Pokemon.query.order_by(Pokemon.id).all()
-    for pokemon in pokemon:
-        showdown_formatted_name = ''.join([x.lower() for x in pokemon.name if x.isalnum()])
-        if pokemon.base_species is not None:
-            base_species_formatted_name = ''.join([x.lower() for x in pokemon.base_species.name if x.isalnum()])
-            name_regex = re.search(f'({base_species_formatted_name})(.*)', showdown_formatted_name)
-            if name_regex is not None:
-                showdown_formatted_name = f'{name_regex.group(1)}-{name_regex.group(2)}'
-            else:
-                raise Exception(f"Could not find base species name {base_species_formatted_name} in {showdown_formatted_name}")
+    for record in pokemon:
+        click.echo(f"Scraping image for pokemon {record.pokemon_name}")
+        scrape_pokemon_image(record)
 
-        # check if the image already exists, and fetch if not
-        pokemon_image_file = os.path.join(current_app.config['POKEMON_IMAGES_DIR'], format_name_to_image_file(pokemon.name))
-        if not os.path.exists(pokemon_image_file):
-            pokemon_image_url = f'{pokemon_image_base_url}{remove_accent_marks(showdown_formatted_name)}.png'
-            click.echo(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching pokemon image from {pokemon_image_url}")
-            time.sleep(current_app.config['REQUEST_DELAY'])
-            pokemon_image_response = requests.get(pokemon_image_url, timeout=10)
+@pokemon.command('scrape-pokemon-image')
+@click.option('--id', '-i', 'pokemon_id',type=click.INT, help='the id of the pokemon to fetch the image for')
+@click.option('--name', '-n', 'pokemon_name',type=click.STRING, help='the name of the pokemon to fetch the image for')
+def scrape_pokemon_image_cmd(pokemon_id, pokemon_name):
+    if pokemon_id is not None:
+        record = db.session.get(Pokemon, pokemon_id)
+    elif pokemon_name is not None:
+        record = Pokemon.query.filter(Pokemon.name == pokemon_name).one_or_none()
+    else:
+        click.echo("Must provide either id or name - to fetch images for all pokemon use 'scrape-pokemon-images' instead.")
+        return
 
-            if pokemon_image_response.status_code != 200:
-                click.echo(f"ERROR: could not fetch pokemon image. CODE {pokemon_image_response.status_code}: "
-                           f"{pokemon_image_response.reason}")
-                continue
-
-            with open(pokemon_image_file, 'wb') as f:
-                f.write(pokemon_image_response.content)
+    if record is not None:
+        click.echo(f"Scraping image for pokemon {record.pokemon_name}")
+        scrape_pokemon_image(record)
+    else:
+        click.echo("Could not find the pokemon specified by id or name.")
 
 
-@pokemon.command('scrape-type-images')
-def scrape_type_images():
-    type_image_base_url = 'https://www.serebii.net/pokedex-sv/type/icon/'
-    types = PokemonType.query.all()
-    for type in types:
-        serebii_formatted_name = ''.join([x.lower() for x in type.name if x.isalnum()])
-        type_image_file = os.path.join(current_app.config['TYPE_IMAGES_DIR'], format_name_to_image_file(type.name))
-        if not os.path.exists(type_image_file):
-            type_image_url = f'{type_image_base_url}{serebii_formatted_name}.png'
-            print(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
-            time.sleep(current_app.config['REQUEST_DELAY'])
-            type_image_response = requests.get(type_image_url, timeout=10)
-            if type_image_response.status_code != 200:
-                click.echo(f"ERROR: could not fetch pokemon image. CODE {type_image_response.status_code}: "
-                           f"{type_image_response.reason}")
-                continue
-            with open(type_image_file, 'wb') as f:
-                f.write(type_image_response.content)
-
+""" Item Image Functions"""
 def scrape_item_image(item_name):
     item_image_base_url = 'https://www.serebii.net/itemdex/sprites/sv/'
     serebii_formatted_name = ''.join([x.lower() for x in item_name if x.isalnum()])
@@ -293,32 +303,81 @@ def scrape_item_image(item_name):
         with open(item_image_file, 'wb') as f:
             f.write(item_image_response.content)
 
-
 @pokemon.command('scrape-item-images')
-def scrape_item_images():
+def scrape_item_images_cmd():
     items = Item.query.all()
     for item in items:
         scrape_item_image(item.name)
 
+@pokemon.command('scrape-item-image')
+@click.option('--id', '-i', 'item_id',type=click.INT, help='the id of the item to fetch the image for')
+@click.option('--name', '-n', 'item_name',type=click.STRING, help='the name of the item to fetch the image for')
+def scrape_item_image_cmd(item_id, item_name):
+    if item_id is not None:
+        record = db.session.get(Item, item_id)
+    elif item_name is not None:
+        record = Item.query.filter(Item.name == item_name).one_or_none()
+    else:
+        click.echo("must provide either id or name - to fetch images for all items use 'scrape-item-images' instead.")
+        return
+
+    if record is not None:
+        click.echo(f"Scraping image for item {record.name}")
+        scrape_item_image(record.name)
+    else:
+        click.echo("Could not find the item specified by id or name.")
+
+
+""" Type Image Functions"""
+def scrape_type_image(type_name):
+    type_image_base_url = 'https://www.serebii.net/pokedex-sv/type/icon/'
+    serebii_formatted_name = ''.join([x.lower() for x in type_name if x.isalnum()])
+    type_image_file = os.path.join(current_app.config['TYPE_IMAGES_DIR'], format_name_to_image_file(type_name))
+    if not os.path.exists(type_image_file):
+        type_image_url = f'{type_image_base_url}{serebii_formatted_name}.png'
+        print(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
+        time.sleep(current_app.config['REQUEST_DELAY'])
+        type_image_response = requests.get(type_image_url, timeout=10)
+        if type_image_response.status_code != 200:
+            click.echo(f"ERROR: could not fetch pokemon image. CODE {type_image_response.status_code}: "
+                       f"{type_image_response.reason}")
+            return
+        with open(type_image_file, 'wb') as f:
+            f.write(type_image_response.content)
+
+# TODO add command for individual type image
+
+@pokemon.command('scrape-type-images')
+def scrape_type_images_cmd():
+    types = PokemonType.query.all()
+    for type in types:
+        scrape_type_image(type.name)
+
+
+""" Tera type image functions """
+def scrape_tera_type_image_cmd(tera_type_name):
+    tera_type_url = 'https://play.pokemonshowdown.com/sprites/types/'
+    type_image_file = os.path.join(current_app.config['TERA_TYPE_IMAGES_DIR'], format_name_to_image_file(tera_type_name))
+    if not os.path.exists(type_image_file):
+        type_image_url = f'{tera_type_url}Tera{tera_type_name}.png'
+        print(
+            f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
+        time.sleep(current_app.config['REQUEST_DELAY'])
+        type_image_response = requests.get(type_image_url, timeout=10)
+        if type_image_response.status_code != 200:
+            click.echo(f"ERROR: could not fetch tera type image. CODE {type_image_response.status_code}: "
+                       f"{type_image_response.reason}")
+            return
+        with open(type_image_file, 'wb') as f:
+            f.write(type_image_response.content)
+
+# TODO add command for individual tera type image
 
 @pokemon.command('scrape-tera-types')
 def scrape_tera_types():
-    tera_type_url = 'https://play.pokemonshowdown.com/sprites/types/'
     types = PokemonType.query.all()
     for type in types:
-        type_image_file = os.path.join(current_app.config['TERA_TYPE_IMAGES_DIR'], format_name_to_image_file(type.name))
-        if not os.path.exists(type_image_file):
-            type_image_url = f'{tera_type_url}Tera{type.name}.png'
-            print(
-                f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
-            time.sleep(current_app.config['REQUEST_DELAY'])
-            type_image_response = requests.get(type_image_url, timeout=10)
-            if type_image_response.status_code != 200:
-                click.echo(f"ERROR: could not fetch tera type image. CODE {type_image_response.status_code}: "
-                           f"{type_image_response.reason}")
-                continue
-            with open(type_image_file, 'wb') as f:
-                f.write(type_image_response.content)
+        scrape_tera_type_image(type.name)
 
 
 

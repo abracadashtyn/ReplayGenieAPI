@@ -8,7 +8,6 @@ from flask import Blueprint, current_app, url_for
 from sqlalchemy import func
 
 from app import db
-from app.tasks.scrape_pokemon_data import scrape_item_image
 from app.utils import format_name_to_image_file
 
 pokemon_to_type = sa.Table(
@@ -147,6 +146,7 @@ class Item(db.Model):
             db.session.add(record)
             db.session.commit()
             # if item is new, attempt to fetch image as well
+            from app.tasks.scrape_pokemon_data import scrape_item_image
             scrape_item_image(record.name)
             logging.info(f"Returning newly created record {record}")
         else:
