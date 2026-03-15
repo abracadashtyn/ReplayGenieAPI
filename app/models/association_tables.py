@@ -62,11 +62,13 @@ class PlayerMatchPokemon(db.Model):
     tera_type: so.Mapped[Optional[PokemonType]] = so.relationship(PokemonType)
 
     move_1_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('moves.id'), index=True)
+    move_1: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_1_id])
     move_2_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('moves.id'), index=True)
+    move_2: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_2_id])
     move_3_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('moves.id'), index=True)
+    move_3: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_3_id])
     move_4_id: so.Mapped[Optional[int]] = so.mapped_column(sa.Integer, sa.ForeignKey('moves.id'), index=True)
-
-    moves: so.Mapped[List['Move']] = so.relationship(secondary='pmp_move')
+    move_4: so.Mapped[Optional['Move']] = so.relationship('Move', foreign_keys=[move_4_id])
 
     def __repr__(self):
         return (f"<PlayerMatchPokemon id {self.id}, match:{self.player_match.match.get_showdown_url_string()} (id {self.player_match.match_id}), "
@@ -80,7 +82,7 @@ class PlayerMatchPokemon(db.Model):
             'ability_id': self.ability_id,
             'item_id': self.item_id,
             'tera_type_id': self.tera_type_id,
-            'move_ids': [x.id for x in self.moves],
+            'move_ids': [y.to_dict() for y in (self.move_1, self.move_2, self.move_3, self.move_4)],
         }
 
     @classmethod
@@ -91,10 +93,3 @@ class PlayerMatchPokemon(db.Model):
             db.session.add(record)
             db.session.commit()
         return record
-
-# defines relationship between PlayerMatchPokemonTable and the Move table.
-pmp_move = sa.Table(
-    'pmp_move',
-    db.metadata,
-    sa.Column('pmp_id', sa.Integer, sa.ForeignKey('pm_pokemon.id'), primary_key=True),
-    sa.Column('move_id', sa.Integer, sa.ForeignKey('moves.id'), primary_key=True))

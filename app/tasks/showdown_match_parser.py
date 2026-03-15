@@ -213,11 +213,11 @@ class ShowdownMatchParser:
                 for move in moves:
                     move_record = Move.get_or_create(self.camel_case_to_spaced(move))
                     move_ids.append(move_record.id)
-                else:
-                    pmp_record.move_1_id = move_ids[0] if len(move_ids) >= 1 else None
-                    pmp_record.move_2_id = move_ids[1] if len(move_ids) >= 2 else None
-                    pmp_record.move_3_id = move_ids[2] if len(move_ids) >= 3 else None
-                    pmp_record.move_4_id = move_ids[3] if len(move_ids) >= 4 else None
+
+                pmp_record.move_1_id = move_ids[0] if len(move_ids) >= 1 else None
+                pmp_record.move_2_id = move_ids[1] if len(move_ids) >= 2 else None
+                pmp_record.move_3_id = move_ids[2] if len(move_ids) >= 3 else None
+                pmp_record.move_4_id = move_ids[3] if len(move_ids) >= 4 else None
 
 
                 # [11]=',,,,,<tera_type>]'
