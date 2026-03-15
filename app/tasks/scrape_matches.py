@@ -59,7 +59,6 @@ def scrape_new(format_id, wait):
                     match_parser.parse_log_details()
                     matches_added_count += 1
                 except AlreadyExistsException:
-                    # a record for the match already exists; continue to the next one
                     logging.info(f"Match {match_json['id']} already exists, skipping.")
                     continue
                 except Exception as e:
