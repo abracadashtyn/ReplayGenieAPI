@@ -179,7 +179,10 @@ def scrape_historic(format_id, wait):
 @click.option('--format_id', '-f', type=int)
 @click.option('--wait', '-w', is_flag=True, default=False,
               help='whether to wait REQUEST_DELAY seconds before calling showdown API (to not hammer it or get rate limited)')
-def scrape_all(format_id, wait):
+@click.option('--skip_seen', '--s', is_flag=True, default=True,
+              help='whether to skip processing of matches that already have records in the database. Set to false when '
+                   'data might be missing to reprocess all matches')
+def scrape_all(format_id, wait, skip_seen):
     logging.basicConfig(level=logging.INFO)
     error_file_name = os.path.join(os.getcwd(), 'app', 'tasks', 'errors', f'scrape-all-{int(time.time())}.json')
 
@@ -206,7 +209,7 @@ def scrape_all(format_id, wait):
                 logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
                 time.sleep(current_app.config['REQUEST_DELAY'])
             try:
-                match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=True)
+                match_parser = ShowdownMatchParser(match_json, format, throw_if_exists=skip_seen)
                 match_parser.parse_log_details()
                 matches_added_count += 1
             except AlreadyExistsException:
