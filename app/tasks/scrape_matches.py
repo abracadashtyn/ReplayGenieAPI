@@ -53,7 +53,7 @@ def scrape_new(format_id, wait):
     while len(matches_json) > 0:
         for match_json in matches_json:
             if match_json["uploadtime"] >= last_match_timestamp:
-                #logging.info(f"Processing match {match_json['id']}")
+                logging.info(f"Processing match {match_json['id']}")
                 try:
                     match_parser = ShowdownMatchParser.construct_from_json(match_json, format, wait, throw_if_exists=True)
                     match_parser.parse_log_details()

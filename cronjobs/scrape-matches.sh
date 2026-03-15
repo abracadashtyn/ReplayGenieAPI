@@ -1,5 +1,4 @@
 #!/bin/bash
-exec flock -n /tmp/scrape-matches.lock "$0" "$@" || exit 1
 
 START_TIME=$(date +%s)
 START_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
