@@ -18,7 +18,7 @@ class ShowdownMatchParser:
 
         # if true, delay so as to not hammer showdown api
         if wait:
-            logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
+            #logging.info(f"Waiting {current_app.config['REQUEST_DELAY']} seconds to call showdown api")
             time.sleep(current_app.config['REQUEST_DELAY'])
 
         # fetch the detailed log data for this particular match and save for later operations

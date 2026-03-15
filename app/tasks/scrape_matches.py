@@ -53,14 +53,14 @@ def scrape_new(format_id, wait):
     while len(matches_json) > 0:
         for match_json in matches_json:
             if match_json["uploadtime"] >= last_match_timestamp:
-                logging.info(f"Processing match {match_json['id']}")
+                #logging.info(f"Processing match {match_json['id']}")
                 try:
                     match_parser = ShowdownMatchParser.construct_from_json(match_json, format, wait, throw_if_exists=True)
                     match_parser.parse_log_details()
                     matches_added_count += 1
                 except AlreadyExistsException:
                     # a record for the match already exists; continue to the next one
-                    logging.info("Match already exists, skipping.")
+                    logging.info(f"Match {match_json['id']} already exists, skipping.")
                     continue
                 except Exception as e:
                     # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
@@ -75,8 +75,9 @@ def scrape_new(format_id, wait):
                     continue
 
             else:
-                logging.info(f"Match with timestamp {match_json['uploadtime']} is older than {last_match_timestamp}."
-                      f"Match scraping is complete. Added {matches_added_count} matches to database.")
+                logging.info(f"Match {match_json['id']} with timestamp {match_json['uploadtime']} is older than"
+                             f" {last_match_timestamp}. Match scraping is complete. Added {matches_added_count} matches "
+                             f"to database.")
                 return
 
         # 51 is the limit of matches that can be returned by this call, so if there are 51, there might be more results
