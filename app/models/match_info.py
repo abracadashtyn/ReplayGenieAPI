@@ -48,7 +48,7 @@ class Match(db.Model):
     format_id: so.Mapped[int] = so.mapped_column(sa.Integer, sa.ForeignKey(Format.id))
     format: so.Mapped[Format] = so.relationship(back_populates='matches')
 
-    players: so.Mapped[List['PlayerMatch']] = so.relationship('PlayerMatch', back_populates='match')
+    players: so.Mapped[List['PlayerMatch']] = so.relationship('PlayerMatch', back_populates='match', cascade='all, delete-orphan')
 
     def __repr__(self):
         return f"<Match id:{self.id}, showdown_id:{self.format.name}-{self.showdown_id}>"

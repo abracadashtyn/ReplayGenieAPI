@@ -17,7 +17,7 @@ class PlayerMatch(db.Model):
     match_id: so.Mapped[int] = so.mapped_column(sa.Integer, sa.ForeignKey('matches.id'), index=True)
     match = so.relationship('Match', back_populates='players')
 
-    pokemon: so.Mapped[List['PlayerMatchPokemon']] = so.relationship(back_populates='player_match', passive_deletes=True)
+    pokemon: so.Mapped[List['PlayerMatchPokemon']] = so.relationship(back_populates='player_match', cascade='all, delete-orphan')
 
     won_match: so.Mapped[Optional[bool]] = so.mapped_column()
 

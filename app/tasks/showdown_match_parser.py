@@ -38,7 +38,7 @@ class ShowdownMatchParser:
 
 
     @classmethod
-    def construct_from_json(cls, match_json, format, wait, throw_if_exists=True, local=False):
+    def construct_from_json(cls, match_json, format_id, wait, throw_if_exists=True, local=False):
         id_strings = match_json['id'].split("-")
         if len(id_strings) != 2:
             raise Exception(f"unable to parse match format {match_json['id']}")
@@ -54,7 +54,7 @@ class ShowdownMatchParser:
             match_record.upload_time = match_json["uploadtime"]
             match_record.rating = match_json["rating"]
             match_record.private = match_json["private"]
-            match_record.format = format
+            match_record.format_id = format_id
             db.session.add(match_record)
             db.session.commit()
         else:

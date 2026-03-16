@@ -21,6 +21,13 @@ def clear_matches():
     Match.query.delete()
     db.session.commit()
 
+@dbops.command('delete-match')
+@click.option('--id', '-i', 'match_id', type=int, required=True)
+def delete_match(match_id):
+    match = Match.query.get(match_id)
+    db.session.delete(match)
+    db.session.commit()
+
 
 @dbops.command('reprocess-matches')
 @click.option('--ids', '-i', help='Comma-separated list of IDs')
