@@ -252,7 +252,7 @@ def assign_set_id(query_missing):
     set_id = db.session.query(Match.set_id).order_by(Match.set_id.desc()).first()
     set_id = set_id[0] + 1 if set_id[0] is not None else 0
     logging.info(f"Will start incrementing set ids from {set_id}")
-    batch_size = 10
+    batch_size = 100
     offset = 0
 
     pm1 = aliased(PlayerMatch)
