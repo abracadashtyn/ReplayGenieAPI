@@ -37,26 +37,26 @@ echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${P2_EXIT_CODE}"
 echo "-----------------------------------------"
 
-/root/ReplayGenieAPI/venv/bin/flask showdown assign-set
+#/root/ReplayGenieAPI/venv/bin/flask showdown assign-set
 
-P3_EXIT_CODE=$?
-END_P3_TIME=$(date +%s)
-END_P3_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-DURATION=$((END_P3_TIME - END_P2_TIME))
+#P3_EXIT_CODE=$?
+#END_P3_TIME=$(date +%s)
+#END_P3_TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+#DURATION=$((END_P3_TIME - END_P2_TIME))
+#MINUTES=$((DURATION / 60))
+#SECONDS=$((DURATION % 60))
+#echo "-----------------------------------------"
+#echo "Assigned a set id to all newly ingested matches: ${END_P3_TIMESTAMP}"
+#echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
+#echo "Exit code: ${P3_EXIT_CODE}"
+#echo "-----------------------------------------"
+
+
+TOTAL_DURATION=$((END_P2_TIME - START_TIME))
 MINUTES=$((DURATION / 60))
 SECONDS=$((DURATION % 60))
 echo "-----------------------------------------"
-echo "Assigned a set id to all newly ingested matches: ${END_P3_TIMESTAMP}"
-echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
-echo "Exit code: ${P3_EXIT_CODE}"
-echo "-----------------------------------------"
-
-
-TOTAL_DURATION=$((END_P3_TIME - START_TIME))
-MINUTES=$((DURATION / 60))
-SECONDS=$((DURATION % 60))
-echo "-----------------------------------------"
-echo "Job completed: ${END_P3_TIMESTAMP}"
+echo "Job completed: ${END_P2_TIMESTAMP}"
 echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "========================================="
 echo ""

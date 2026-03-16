@@ -5,11 +5,11 @@ import time
 import click
 import requests
 from flask import current_app
-from sqlalchemy import literal_column, update, exists
+from sqlalchemy import literal_column, update, exists, func, distinct
 from sqlalchemy.orm import aliased
 from app import db
 from app.exceptions import AlreadyExistsException
-from app.models import Format, Match, PlayerMatch, Player
+from app.models import Format, Match, PlayerMatch, Player, PlayerMatchPokemon
 from app.tasks import bp
 from app.tasks.showdown_match_parser import ShowdownMatchParser
 
@@ -243,9 +243,7 @@ def scrape_all(format_id, wait, reprocess_seen):
 
 
 @showdown.command('assign-set')
-@click.option('--query_missing', '-q', is_flag=True, default=False,
-              help='searches the showdown api for any matches missing in the sequence')
-def assign_set_id(query_missing):
+def assign_set_id():
     logging.basicConfig(level=logging.INFO)
     format_cache = {}
 
@@ -268,7 +266,7 @@ def assign_set_id(query_missing):
                 p1.name.label('p1_name'),
                 pm2.player_id.label("p2_id"),
                 p2.name.label('p2_name'),
-                literal_column("GROUP_CONCAT(matches.position_in_set, '|', matches.id, '|', matches.showdown_id ORDER BY matches.upload_time SEPARATOR ',')").label('match_list'),
+                literal_column("GROUP_CONCAT(matches.position_in_set, '|', matches.id, '|', matches.showdown_id ORDER BY matches.showdown_id SEPARATOR ',')").label('match_list'),
                 Match.format_id.label('format')
             ).join(p1, pm1.player_id == p1.id)\
             .join(pm2, pm1.match_id == pm2.match_id)\
@@ -294,74 +292,84 @@ def assign_set_id(query_missing):
             break
 
         for result in batch:
+            time.sleep(2)
             logging.info('-------------------')
             logging.info(f"Parsing record {result}")
-            matches = [x.split('|') for x in result[4].split(",")]
-            if query_missing:
-                logging.info(f"Will query showdown to fetch any missing matches")
-                if result[5] not in format_cache:
-                    format_record = Format.query.get(result[5])
-                    format_cache[result[5]] = format_record.name
 
-                search_url = "https://replay.pokemonshowdown.com/search.json"
-                params = {
-                    "user": result[1],
-                    "user2": result[3],
-                    "format": format_cache[result[5]]
-                }
-                response = requests.get(search_url, params=params)
-                if response.status_code != 200:
-                    logging.error(f"Something went wrong with web request: {response}")
-                if len(response.json()) < len(matches):
-                    logging.error(f"Somehow we have less in the response than in the db? Double check this")
-                    exit(30)
-                else:
-                    new_match_json = {x['id'].split('-')[1]: x for x in response.json()}
-                    for showdown_id, match_json in new_match_json.items():
-                        if not showdown_id in result[4]:
-                            try:
-                                match_parser = ShowdownMatchParser.construct_from_json(match_json, result[5], wait=True, throw_if_exists=True)
-                                match_parser.parse_log_details()
-                                logging.info(f"Created new match record for showdown {showdown_id}")
-                                matches.append([
-                                    match_parser.match_record.position_in_set,
-                                    match_parser.match_record.id,
-                                    match_parser.match_record.showdown_id])
-                            except AlreadyExistsException:
-                                pass
+            all_match_data = []
+            for m in result[4].split(','):
+                m = m.split("|")
+                all_match_data.append({
+                    'position': int(m[0]),
+                    'id': int(m[1]),
+                    'showdown_id': m[2],
+                    'pokemon': None
+                })
 
-                db.session.commit()
-                matches = sorted(matches, key=lambda x: int(x[2]))
+            # get all pokemon used by match:
+            pokemon_data_base_query = db.session.query(
+                PlayerMatch.match_id,
+                literal_column("GROUP_CONCAT(pm_pokemon.pokemon_id ORDER BY pm_pokemon.pokemon_id SEPARATOR ',')").label('poke_list'),
+            ).select_from(
+                PlayerMatch
+            ).join(
+                PlayerMatchPokemon, PlayerMatch.id == PlayerMatchPokemon.player_match_id
+            ).group_by(
+                PlayerMatch.match_id
+            )
+
+            pokemon_data = pokemon_data_base_query.filter(
+                PlayerMatch.match_id.in_([x['id'] for x in all_match_data])
+            ).all()
+            poke_match_map = {int(x[0]): x[1] for x in pokemon_data}
+
+            print(f"\tmatch to pokemon map {poke_match_map}")
 
             # loop through all the matches and group them into sets.
             match_sets = []
             match_set = {1: None, 2: None, 3: None}
             previous = 0
-            for match in matches:
-                try:
-                    position = int(match[0])
-                except ValueError:
-                    logging.error(f"match id {match[1]} has null position number.")
-                    exit(40)
+            for match in all_match_data:
+                # assign the pokemon to the match for comparison
+                if match['id'] not in poke_match_map.keys():
+                    logging.error(f"Could not locate pokemon for match with id {match['id']}")
+                    exit(10)
+                match['pokemon'] = poke_match_map[match['id']]
 
-                if position <= previous or match_set[position] is not None:
+                print(f"\tProcessing match {match}")
+
+                #if the current match position is lower than the previous or is already filled in this set, then we've
+                # looped around to a new set. Add the previous set to the list and start populating a new one
+                if match['position'] <= previous or match_set[match['position']] is not None:
+                    print(f"\tMatch {match['id']} position {match['position']} is less than previous position {previous}; adding new set.")
                     match_sets.append(match_set)
                     match_set = {1: None, 2: None, 3: None}
 
-                match_set[position] = [match[1], match[2]]
-                previous = position
+                # check to make sure the pokemon match any previous matches in the set. If not, it's a new set.
+                elif match['position'] > 1 and previous != 0 and match['pokemon'] != match_set[previous]['pokemon']:
+                    print(f'\tmatch {match['id']} at position {match['position']} has different pokemon than previous\n'
+                          f'\t({match['pokemon']} versus {match_set[previous]['pokemon']})\n'
+                          f'\tcreating new set.')
+                    match_sets.append(match_set)
+                    match_set = {1: None, 2: None, 3: None}
+
+                match_set[match['position']] = match
+                previous = match['position']
+
             match_sets.append(match_set)
 
-            logging.info(f'Parsed match sets:: {match_sets}')
+            print(f'\tfound {len(match_sets)} match sets:: {json.dumps(match_sets, indent=2)}')
 
             # assign a set id to each defined set of matches
-            for match_set in match_sets:
-                if match_set[1] is None:
-                    # This might be missing data, or it might be a new match to be added to an existing set. query
-                    # to see if a set missing a match in this position exists in the database already
-                    logging.info(f"First match in set {match_set} is missing; will query for existing set to append to")
+            for match_index, match_set in enumerate(match_sets):
+                # if the first set of matches is missing it's first match, this might be part of an existing series
+                # that was already catalogued in the database earlier. If so, we will search for the match immediately
+                # preceding the first present in this set and determine if they're a match by the pokemon used in them.
+                # if so, give all items in this match set the same set id as the existing series.
+                if match_index == 0 and match_set[1] is None:
+                    logging.info(f"\tFirst match in set {match_index} is missing; will query for existing set to append to")
                     earliest_position = 2 if match_set[2] else 3
-                    showdown_id = match_set[earliest_position][1]
+                    showdown_id = match_set[earliest_position]['showdown_id']
 
                     prev_set = db.session \
                         .query(
@@ -388,14 +396,20 @@ def assign_set_id(query_missing):
                         .first()
 
                     if prev_set is not None:
-                        logging.info(f"Appending this match to existing set with set_id {prev_set.set_id}")
-                        stmt = update(Match).where(Match.id.in_([x[0] for x in match_set.values() if x is not None])).values(set_id=prev_set.set_id)
-                        db.session.execute(stmt)
-                        continue
+                        print(f'\tFound possible previous set with id {prev_set[0]}; checking pokemon to verify')
+                        prev_match_pokemon = pokemon_data_base_query.filter(PlayerMatch.match_id == prev_set[0]).first()
+                        print(f'\tprev_match_pokemon: {prev_match_pokemon}')
+
+                        if all([True if x['pokemon'] == prev_match_pokemon[1] else False for x in match_set.values() if x is not None]):
+                            print(f"\tAlso matched previous pokemon!")
+                            logging.info(f"Appending this match to existing set with set_id {prev_set.set_id}")
+                            stmt = update(Match).where(Match.id.in_([x['id'] for x in match_set.values() if x is not None])).values(set_id=prev_set.set_id)
+                            db.session.execute(stmt)
+                            continue
                     else:
                         logging.info("No existing set found to match this record. Will create new set id for it.")
 
-                stmt = update(Match).where(Match.id.in_([x[0] for x in match_set.values() if x is not None])).values(set_id=set_id)
+                stmt = update(Match).where(Match.id.in_([x['id'] for x in match_set.values() if x is not None])).values(set_id=set_id)
                 #logging.info(f'Will update set id with statement {stmt.compile(compile_kwargs={"literal_binds": True})}')
                 db.session.execute(stmt)
                 set_id += 1
