@@ -41,8 +41,7 @@ class Match(db.Model):
     rating: so.Mapped[Optional[int]] = so.mapped_column()
     private: so.Mapped[bool] = so.mapped_column()
 
-    # TODO: logic to group matches into best of threes
-    set_id: so.Mapped[Optional[int]] = so.mapped_column()
+    set_id: so.Mapped[Optional[int]] = so.mapped_column(index=True)
     position_in_set: so.Mapped[Optional[int]] = so.mapped_column()    # e.g. 2nd match out of 3 would have value 2 here
 
     format_id: so.Mapped[int] = so.mapped_column(sa.Integer, sa.ForeignKey(Format.id))
