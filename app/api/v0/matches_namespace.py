@@ -172,9 +172,9 @@ class MatchDetails(Resource):
                     'types': [y.to_dict() for y in x.pokemon.types],
                     'tera_type': x.tera_type.to_dict(is_tera=True) if x.tera_type else None,
                     'base_species': x.pokemon.base_species.to_dict() if x.pokemon.base_species else None,
-                    'ability': x.ability.to_dict(),
+                    'ability': x.ability.to_dict() if x.ability else None,
                     'item': x.item.to_dict() if x.item else None,
-                    'moves': [y.to_dict() for y in (x.move_1, x.move_2, x.move_3, x.move_4)]
+                    'moves': [y.to_dict() for y in (x.move_1, x.move_2, x.move_3, x.move_4) if y is not None]
                 } for x in player_match.pokemon]
             })
         return response
