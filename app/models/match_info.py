@@ -1,5 +1,4 @@
 from datetime import datetime
-import logging
 import sqlalchemy as sa
 import sqlalchemy.orm as so
 from typing import Optional, List
@@ -59,8 +58,9 @@ class Match(db.Model):
             'upload_time': (datetime.fromtimestamp(self.upload_time).isoformat()),
             'rating': self.rating,
             'private': self.private,
-            # todo add set information once populated
             'format': self.format.to_dict(),
+            'set_id': self.set_id,
+            'position_in_set': self.position_in_set,
         }
 
     def get_showdown_url_string(self):

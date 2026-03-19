@@ -1,7 +1,6 @@
-import json
-
 from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
+
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
@@ -15,9 +14,8 @@ from app.api.v0.pokemon_namespace import pokemon_model, pokemon_base_species_mod
 from app.api.v0.types_namespace import pokemon_type_model
 from app.models import Match, PlayerMatchPokemon, PlayerMatch, Player
 
-matches_ns = Namespace('Matches')
+matches_ns = Namespace('Matches', description='Operations related to matches')
 api.add_namespace(matches_ns, path='/matches')
-
 default_match_limit = 50
 
 def query_and_format_matches(query, page, limit):
@@ -66,6 +64,8 @@ base_match_model = api.model('BaseMatch', {
     'rating': fields.Integer,
     'private': fields.Boolean,
     'format': fields.Nested(format_model),
+    'set_id': fields.String,
+    'position_in_set': fields.Integer,
 })
 pokemon_team_overview_model = api.inherit('BasePokemon', pokemon_base_species_model, {
     'item': fields.Nested(item_model),
@@ -76,7 +76,7 @@ player_match_model = api.inherit("PlayerMatchDetails", player_model, {
     'team': fields.List(fields.Nested(pokemon_team_overview_model)),
 })
 match_model = api.inherit('Match', base_match_model, {
-    'players': fields.List(fields.Nested(player_match_model))
+    'players': fields.List(fields.Nested(player_match_model)),
 })
 match_list_response = api.model('MatchListResponse', {
     'success': fields.Boolean,
@@ -107,7 +107,6 @@ class MatchList(Resource):
             query = query.filter(Match.format_id == current_app.config['CURRENT_FORMAT_ID'])
 
         if 'rated_only' in request.args and request.args.get('rated_only') == 'true':
-            print("Requesting rated matches only")
             query = query.filter(Match.rating.is_not(None))
 
         if 'order_by' in request.args and request.args.get('order_by') == 'rating':
@@ -116,7 +115,6 @@ class MatchList(Resource):
             query = query.order_by(Match.upload_time.desc())
 
         return query_and_format_matches(query, page, limit)
-
 
 
 """ Fetches details for a specific match """
@@ -130,8 +128,14 @@ player_match_detail_model = api.inherit("PlayerMatchDetails", player_model, {
     'winner': fields.Boolean,
     'team': fields.List(fields.Nested(pokemon_instance_model)),
 })
+set_match_overview_model = api.model('SetMatchOverview', {
+    'id': fields.Integer,
+    'showdown_id': fields.String,
+    'position_in_set': fields.Integer,
+})
 match_detail_model = api.inherit('MatchDetails', base_match_model, {
-    'players': fields.List(fields.Nested(player_match_detail_model))
+    'players': fields.List(fields.Nested(player_match_detail_model)),
+    'set_matches': fields.List(fields.Nested(set_match_overview_model))
 })
 match_detail_response = api.model('MatchDetailResponse', {
     'success': fields.Boolean,
@@ -157,7 +161,6 @@ class MatchDetails(Resource):
             'data': match_record.to_dict()
         }
         response['data']['players'] = []
-
         for player_match in match_record.players:
             response['data']['players'].append({
                 'id': player_match.player_id,
@@ -177,6 +180,15 @@ class MatchDetails(Resource):
                     'moves': [y.to_dict() for y in (x.move_1, x.move_2, x.move_3, x.move_4) if y is not None]
                 } for x in player_match.pokemon]
             })
+
+        response['data']['set_matches'] = []
+        set_matches = Match.query.filter(Match.set_id == match_record.set_id).all()
+        for set_match in set_matches:
+            response['data']['set_matches'].append({
+                'id': set_match.id,
+                'showdown_id': set_match.get_showdown_url_string(),
+                'position_in_set': set_match.position_in_set,
+            })
         return response
 
 
@@ -189,7 +201,7 @@ search_request_model = api.model('SearchModel', {
     'limit': fields.Integer(example=default_match_limit),
     'page': fields.Integer(example=1),
     'format_id': fields.Integer(example=1),
-    'rating':fields.Nested(api.model('RatingModel', {
+    'rating': fields.Nested(api.model('RatingModel', {
         'min': fields.Integer(example=1000),
         'max': fields.Integer(example=1500),
         'unrated_only': fields.Boolean(example=False),
@@ -208,6 +220,7 @@ search_request_model = api.model('SearchModel', {
     })),
     'player_id': fields.Integer,
     'player_name': fields.String(description="will be superceded by user_id field if both are provided."),
+    'set_id': fields.Integer
 })
 @matches_ns.route('/search')
 class Search(Resource):
@@ -224,9 +237,6 @@ class Search(Resource):
 
         if 'format_id' in search_data and search_data['format_id'] != "":
             query = query.filter(Match.format_id == search_data['format_id'])
-        else:
-            # TODO - better to return all formats or just currently played format?
-            query = query.filter(Match.format_id == current_app.config['CURRENT_FORMAT_ID'])
 
         if 'minimum_rating' in search_data and search_data['minimum_rating'] != "":
             query = query.filter(Match.rating >= search_data['minimum_rating'])
@@ -253,7 +263,6 @@ class Search(Resource):
             if 'end' in search_data['time_range']:
                 query = query.filter(Match.upload_time <= search_data['time_range']['end'])
 
-
         if 'rating' in search_data:
             if 'unrated_only' in search_data['rating'] and search_data['rating']['unrated_only'] is True:
                 if 'min' in search_data['rating'] or 'max' in search_data['rating']:
@@ -272,5 +281,8 @@ class Search(Resource):
             query = query.filter(Match.players.any(PlayerMatch.id == search_data['player_id']))
         elif 'player_name' in search_data:
             query = query.filter(Match.players.any(PlayerMatch.player.has(Player.name == search_data['player_name'])))
+
+        if 'set_id' in search_data:
+            query = query.filter(Match.set_id == search_data['set_id'])
 
         return query_and_format_matches(query, page, limit)
