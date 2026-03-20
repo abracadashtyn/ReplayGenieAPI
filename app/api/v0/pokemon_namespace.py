@@ -1,15 +1,16 @@
 from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
-from sqlalchemy import func, union_all
+from sqlalchemy import func, union_all, distinct
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 from app.api.PaginationUtils import PaginationUtils
 from app.api.v0 import bp, api, pagination_model, error_response
+from app.api.v0.abilities_namespace import ability_model
 from app.api.v0.items_namespace import item_model
 from app.api.v0.moves_namespace import move_model
 from app.api.v0.types_namespace import pokemon_type_model
-from app.models import Pokemon, PokemonType, PlayerMatchPokemon, Item, PlayerMatch, Match, Move
+from app.models import Pokemon, PokemonType, PlayerMatchPokemon, Item, PlayerMatch, Match, Move, Ability
 
 pokemon_ns = Namespace('Pokemon')
 api.add_namespace(pokemon_ns, path='/pokemon')
@@ -96,11 +97,15 @@ tera_type_frequency_model = api.inherit('TeraTypeFrequency', pokemon_type_model,
 move_frequency_model = api.inherit('MoveFrequency', move_model, {
     'count': fields.Integer,
 })
+ability_frequency_model = api.inherit('AbilityFrequency', ability_model, {
+    'count': fields.Integer,
+})
 pokemon_detail_model = api.inherit('PokemonDetail', pokemon_model, {
     'forms': fields.List(fields.Nested(pokemon_form_model)),
     'top_items': fields.List(fields.Nested(item_frequency_model)),
     'top_tera_types': fields.List(fields.Nested(tera_type_frequency_model)),
     'top_moves': fields.List(fields.Nested(move_frequency_model)),
+    'top_abilities': fields.List(fields.Nested(ability_frequency_model)),
 })
 pokemon_detail_response = api.model('PokemonDetailResponse', {
     'success': fields.Boolean,
@@ -152,6 +157,10 @@ class PokemonDetail(Resource):
             PlayerMatchPokemon.pokemon_id == pokemon_id
         ).cte('filtered_pmp')
 
+        # used in x percent of matches
+        #match_count = db.session.query(func.count(distinct(filtered_pmp.c.match_id))).all()
+        #print(f"match count: {match_count}")
+
         # most common items
         most_common_items = db.session.query(
             Item.id,
@@ -164,7 +173,7 @@ class PokemonDetail(Resource):
             Item.name
         ).order_by(
             func.count('*').desc()
-        ).limit(5).all()
+        ).limit(6).all()
         response['data']['top_items'] = []
         for item in most_common_items:
             response['data']['top_items'].append({
@@ -186,7 +195,7 @@ class PokemonDetail(Resource):
             PokemonType.name
         ).order_by(
             func.count('*').desc()
-        ).limit(5).all()
+        ).limit(6).all()
         response['data']['top_tera_types'] = []
         for type in most_common_tera:
             response['data']['top_tera_types'].append({
@@ -194,6 +203,27 @@ class PokemonDetail(Resource):
                 'name': type[1],
                 'image_url': PokemonType.image_url_from_name(type[1]),
                 'count': type[2],
+            })
+
+        # most common abilities
+        most_common_abilities = db.session.query(
+            Ability.id,
+            Ability.name,
+            func.count('*').label('abilities_count')
+        ).join(
+            filtered_pmp, filtered_pmp.c.ability_id == Ability.id
+        ).group_by(
+            Ability.id,
+            Ability.name
+        ).order_by(
+            func.count('*').desc()
+        ).limit(6).all()
+        response['data']['top_abilities'] = []
+        for ability in most_common_abilities:
+            response['data']['top_abilities'].append({
+                'id': ability[0],
+                'name': ability[1],
+                'count': ability[2],
             })
 
         # most common moves
@@ -226,7 +256,7 @@ class PokemonDetail(Resource):
             all_moves.c.move_id
         ).order_by(
             func.count('*').desc()
-        ).limit(5).all()
+        ).limit(6).all()
         response['data']['top_moves'] = []
         for move in most_common_moves:
             response['data']['top_moves'].append({
