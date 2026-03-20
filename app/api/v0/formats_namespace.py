@@ -42,6 +42,7 @@ class FormatList(Resource):
 
 format_detail_model = api.inherit('FormatDetailModel', format_model, {
     'match_count': fields.Integer,
+    'team_count': fields.Integer,
     'top_pokemon': fields.List(fields.Nested(teammate_frequency_model)),
 })
 format_detail_response = api.model('FormatDetailResponse', {
@@ -69,8 +70,9 @@ class FormatDetail(Resource):
         # get total count of matches in this format
         match_count = Match.query.filter_by(format_id=format_id).count()
         response['data']['match_count'] = match_count
+        response['data']['team_count'] = match_count * 2
 
-        # get the top 6 used mons in this format
+        # get the top n used mons in this format (n=param value or 6 if none is provided)
         top_mons_query = db.session.query(
             PlayerMatchPokemon.pokemon_id,
             func.count('*').label('pokemon_count')

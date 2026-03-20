@@ -179,7 +179,7 @@ class PokemonDetail(Resource):
         percent_used = match_count/total_matches * 100
         response['data']['match_percent'] = percent_used
 
-        # find count and percentage of matches this mon is used in
+        # find count and percentage of teams this mon is used in
         team_count = db.session.query(
             func.count(func.distinct(PlayerMatch.id))
         ).select_from(
@@ -188,8 +188,7 @@ class PokemonDetail(Resource):
             PlayerMatch, filtered_pmp.c.player_match_id == PlayerMatch.id
         ).scalar()
         response['data']['team_count'] = team_count
-        total_teams = PlayerMatch.query.count()
-        team_percent = team_count / total_teams * 100
+        team_percent = team_count / (total_matches * 2) * 100
         response['data']['team_percent'] = team_percent
 
         # most common items
