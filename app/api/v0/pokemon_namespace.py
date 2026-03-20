@@ -100,6 +100,9 @@ move_frequency_model = api.inherit('MoveFrequency', move_model, {
 ability_frequency_model = api.inherit('AbilityFrequency', ability_model, {
     'count': fields.Integer,
 })
+teammate_frequency_model = api.inherit('TeammateFrequency', pokemon_base_species_model, {
+    'count': fields.Integer,
+})
 pokemon_detail_model = api.inherit('PokemonDetail', pokemon_model, {
     'forms': fields.List(fields.Nested(pokemon_form_model)),
     'match_count': fields.Integer,
@@ -108,6 +111,7 @@ pokemon_detail_model = api.inherit('PokemonDetail', pokemon_model, {
     'top_tera_types': fields.List(fields.Nested(tera_type_frequency_model)),
     'top_moves': fields.List(fields.Nested(move_frequency_model)),
     'top_abilities': fields.List(fields.Nested(ability_frequency_model)),
+    'top_teammates': fields.List(fields.Nested(teammate_frequency_model)),
 })
 pokemon_detail_response = api.model('PokemonDetailResponse', {
     'success': fields.Boolean,
@@ -168,11 +172,9 @@ class PokemonDetail(Resource):
         ).join(
             PlayerMatch, filtered_pmp.c.player_match_id == PlayerMatch.id
         ).scalar()
-        print(f"match count: {match_count}")
         response['data']['match_count'] = match_count
         total_matches = Match.query.count()
         percent_used = match_count/total_matches * 100
-        print(f"used in {match_count} out of {total_matches} matches ({percent_used:.2f}%)")
         response['data']['match_percent'] = percent_used
 
         # most common items
@@ -263,6 +265,23 @@ class PokemonDetail(Resource):
             })
 
         # most common teammates
+        most_common_teammates = db.session.query(
+            PlayerMatchPokemon.pokemon_id,
+            func.count('*').label('pokemon_count')
+        ).join(
+            filtered_pmp, filtered_pmp.c.player_match_id == PlayerMatchPokemon.player_match_id
+        ).filter(
+            PlayerMatchPokemon.pokemon_id != filtered_pmp.c.pokemon_id
+        ).group_by(
+            PlayerMatchPokemon.pokemon_id,
+        ).order_by(
+            func.count('*').desc()
+        ).limit(6).all()
+        response['data']['top_teammates'] = []
+        for team in most_common_teammates:
+            mon_record = Pokemon.query.get(team[0]).to_dict()
+            mon_record['count'] = team[1]
+            response['data']['top_teammates'].append(mon_record)
 
         return response
 
