@@ -102,6 +102,8 @@ ability_frequency_model = api.inherit('AbilityFrequency', ability_model, {
 })
 pokemon_detail_model = api.inherit('PokemonDetail', pokemon_model, {
     'forms': fields.List(fields.Nested(pokemon_form_model)),
+    'match_count': fields.Integer,
+    'match_percent': fields.Float,
     'top_items': fields.List(fields.Nested(item_frequency_model)),
     'top_tera_types': fields.List(fields.Nested(tera_type_frequency_model)),
     'top_moves': fields.List(fields.Nested(move_frequency_model)),
@@ -146,6 +148,7 @@ class PokemonDetail(Resource):
         # base query that filters PlayerMatchPokemon records to current format
         format_id = request.args.get('format_id', type=int) if 'format_id' in request.args \
             else current_app.config['CURRENT_FORMAT_ID']
+
         filtered_pmp = db.session.query(
             PlayerMatchPokemon
         ).join(
@@ -157,9 +160,20 @@ class PokemonDetail(Resource):
             PlayerMatchPokemon.pokemon_id == pokemon_id
         ).cte('filtered_pmp')
 
-        # used in x percent of matches
-        #match_count = db.session.query(func.count(distinct(filtered_pmp.c.match_id))).all()
-        #print(f"match count: {match_count}")
+        # find count and percentage of matches this mon is used in
+        match_count = db.session.query(
+            func.count(func.distinct(PlayerMatch.match_id))
+        ).select_from(
+            filtered_pmp
+        ).join(
+            PlayerMatch, filtered_pmp.c.player_match_id == PlayerMatch.id
+        ).scalar()
+        print(f"match count: {match_count}")
+        response['data']['match_count'] = match_count
+        total_matches = Match.query.count()
+        percent_used = match_count/total_matches * 100
+        print(f"used in {match_count} out of {total_matches} matches ({percent_used:.2f}%)")
+        response['data']['match_percent'] = percent_used
 
         # most common items
         most_common_items = db.session.query(
@@ -227,28 +241,11 @@ class PokemonDetail(Resource):
             })
 
         # most common moves
-        move1 = db.session.query(
-            filtered_pmp.c.move_1_id.label('move_id')
-        ).filter(
-            filtered_pmp.c.move_1_id.is_not(None))
-
-        move2 = db.session.query(
-            filtered_pmp.c.move_2_id.label('move_id')
-        ).filter(
-            filtered_pmp.c.move_2_id.is_not(None))
-
-        move3 = db.session.query(
-            filtered_pmp.c.move_3_id.label('move_id')
-        ).filter(
-            filtered_pmp.c.move_3_id.is_not(None))
-
-        move4 = db.session.query(
-            filtered_pmp.c.move_4_id.label('move_id')
-        ).filter(
-            filtered_pmp.c.move_4_id.is_not(None))
-
+        move1 = db.session.query(filtered_pmp.c.move_1_id.label('move_id')).filter(filtered_pmp.c.move_1_id.is_not(None))
+        move2 = db.session.query(filtered_pmp.c.move_2_id.label('move_id')).filter(filtered_pmp.c.move_2_id.is_not(None))
+        move3 = db.session.query(filtered_pmp.c.move_3_id.label('move_id')).filter(filtered_pmp.c.move_3_id.is_not(None))
+        move4 = db.session.query(filtered_pmp.c.move_4_id.label('move_id')).filter(filtered_pmp.c.move_4_id.is_not(None))
         all_moves = union_all(move1, move2, move3, move4).subquery()
-
         most_common_moves = db.session.query(
             all_moves.c.move_id,
             func.count('*').label('move_count')
