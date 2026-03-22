@@ -1,4 +1,5 @@
 import time
+import uuid
 from collections import Counter
 
 from flask import request, current_app
@@ -161,8 +162,9 @@ class PokemonDetail(Resource):
         # create temporary table to pre-filter out only the relevant player_match_pokemon records for this format and
         # pokemon. Required as mysql was not materializing cte and queries were lagging.
         start_time = time.perf_counter()
-        db.session.execute(text("""
-            CREATE TEMPORARY TABLE temp_filtered_pmp AS
+        table_name = f"temp_filtered_pmp_{uuid.uuid4().hex[:8]}"
+        db.session.execute(text(f"""
+            CREATE TEMPORARY TABLE {table_name} AS
             SELECT 
                 pmp.id,
                 pmp.player_match_id,
@@ -183,11 +185,11 @@ class PokemonDetail(Resource):
 
         # find number of matches this mon appears in on at least one team
         start_time = time.perf_counter()
-        match_count = db.session.execute(text("""
+        match_count = db.session.execute(text(f"""
             SELECT
                 COUNT(DISTINCT pm.match_id)
             FROM 
-                temp_filtered_pmp as pmp
+                {table_name} as pmp
             JOIN 
                 player_matches as pm on pmp.player_match_id = pm.id
         """)).scalar()
@@ -200,11 +202,11 @@ class PokemonDetail(Resource):
 
         # find count and percentage of teams this mon is used in
         start_time = time.perf_counter()
-        team_count= db.session.execute(text("""
+        team_count= db.session.execute(text(f"""
             SELECT 
                 count(distinct pmp.player_match_id) 
             FROM
-                temp_filtered_pmp as pmp
+                {table_name} as pmp
         """)).scalar()
         response['data']['team_count'] = team_count
         team_percent = team_count / (total_matches * 2) * 100
@@ -214,13 +216,13 @@ class PokemonDetail(Resource):
 
         # aggregate the top 6 most common items used
         start_time = time.perf_counter()
-        most_common_items = db.session.execute(text("""
+        most_common_items = db.session.execute(text(f"""
             SELECT 
                 i.id,
                 i.name,
                 count(*) as item_count
             FROM
-                temp_filtered_pmp as pmp
+                {table_name} as pmp
             JOIN
                 items as i on pmp.item_id = i.id
             GROUP BY
@@ -243,13 +245,13 @@ class PokemonDetail(Resource):
 
         # aggregate top 6 most common tera types
         start_time = time.perf_counter()
-        most_common_tera = db.session.execute(text("""
+        most_common_tera = db.session.execute(text(f"""
             SELECT 
                 t.id,
                 t.name,
                 count(*) as tera_type_count
             FROM
-                temp_filtered_pmp as pmp
+                {table_name} as pmp
             JOIN
                  pokemon_types as t on pmp.tera_type_id = t.id
             GROUP BY
@@ -272,13 +274,13 @@ class PokemonDetail(Resource):
 
         # aggregate top 6 most common abilities
         start_time = time.perf_counter()
-        most_common_abilities = db.session.execute(text("""
+        most_common_abilities = db.session.execute(text(f"""
             SELECT
                 a.id,
                 a.name,
                 count(*) as ability_count
             FROM
-                temp_filtered_pmp as pmp
+                {table_name} as pmp
             JOIN
                 abilities as a on pmp.ability_id = a.id
             GROUP BY
@@ -303,10 +305,10 @@ class PokemonDetail(Resource):
         # being materialized but rather reconstructed 4 separate times, resulting in slow query times for mons with
         # many records in the PlayerMatchPokemon table.
         start_time = time.perf_counter()
-        move_1 = db.session.execute(text("""SELECT move_1_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_1_id IS NOT NULL GROUP BY move_1_id""")).fetchall()
-        move_2 = db.session.execute(text("""SELECT move_2_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_2_id IS NOT NULL GROUP BY move_2_id""")).fetchall()
-        move_3 = db.session.execute(text("""SELECT move_3_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_3_id IS NOT NULL GROUP BY move_3_id""")).fetchall()
-        move_4 = db.session.execute(text("""SELECT move_4_id, count(*) as move_count FROM temp_filtered_pmp WHERE move_4_id IS NOT NULL GROUP BY move_4_id""")).fetchall()
+        move_1 = db.session.execute(text(f"""SELECT move_1_id, count(*) as move_count FROM {table_name} WHERE move_1_id IS NOT NULL GROUP BY move_1_id""")).fetchall()
+        move_2 = db.session.execute(text(f"""SELECT move_2_id, count(*) as move_count FROM {table_name} WHERE move_2_id IS NOT NULL GROUP BY move_2_id""")).fetchall()
+        move_3 = db.session.execute(text(f"""SELECT move_3_id, count(*) as move_count FROM {table_name} WHERE move_3_id IS NOT NULL GROUP BY move_3_id""")).fetchall()
+        move_4 = db.session.execute(text(f"""SELECT move_4_id, count(*) as move_count FROM {table_name} WHERE move_4_id IS NOT NULL GROUP BY move_4_id""")).fetchall()
         end_time = time.perf_counter()
         print(f"most common moves queries took {end_time - start_time} seconds")
         start_time = time.perf_counter()
@@ -326,12 +328,12 @@ class PokemonDetail(Resource):
 
         # aggregate top 6 most common teammates
         start_time = time.perf_counter()
-        most_common_teammates = db.session.execute(text("""
+        most_common_teammates = db.session.execute(text(f"""
             SELECT
                 pmp.pokemon_id,
                 count(*) as pokemon_count
             FROM
-                temp_filtered_pmp as tmp
+                {table_name} as tmp
             JOIN
                 pm_pokemon as pmp on pmp.player_match_id = tmp.player_match_id
             WHERE
