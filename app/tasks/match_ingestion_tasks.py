@@ -11,6 +11,7 @@ from app import db, redis_cache
 from app.exceptions import AlreadyExistsException, CustomGameException
 from app.models import Format, Match, PlayerMatch, Player, PlayerMatchPokemon
 from app.tasks import bp
+from app.tasks.cache_operations import clear, warm
 from app.tasks.showdown_match_parser import ShowdownMatchParser
 
 list_replays_url = "https://replay.pokemonshowdown.com/search.json"
@@ -21,7 +22,123 @@ def showdown():
     """Commands to scrape matches from showdown urls"""
     pass
 
-#TODO combine all scrape commands into single
+#TODO remove other scrapers once the one below is tested
+@showdown.command('scrape')
+@click.pass_context
+@click.option('--format_id', '-f', type=int)
+@click.option('--historical', '-h', is_flag=True, default=False,
+              help='if present, scrapes all matches older than the oldest match currently in the database')
+@click.option('--all', '-a', is_flag=True, default=False,
+              help='if present, scrapes all matches, even those currently in the database')
+def scrape(ctx, format_id, historical, all):
+    logging.basicConfig(level=logging.INFO)
+
+    # get the format id - default to current as specified in config if no value is provided
+    format_id = current_app.config.get('CURRENT_FORMAT_ID') if format_id is None else format_id
+    format = Format.query.get(format_id)
+    if format is None:
+        logging.error("format ID does not exist in database")
+        exit(1)
+
+    comparison_timestamp = None
+    if historical:
+        logging.info('Scraping historical data.')
+        mode = 'historical'
+        error_file_name = f'scrape-{int(time.time())}.json'
+        earliest_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.asc()).first()
+        comparison_timestamp = earliest_match.upload_time
+        logging.info(f"Timestamp of earliest match is {comparison_timestamp}. Scraping matches older than this...")
+
+    elif all:
+        logging.info('Scraping everything.')
+        mode = 'all'
+        error_file_name = f'scrape-all-{int(time.time())}.json'
+        
+    else:
+        # default behavior is to scrape new
+        mode = 'new'
+        error_file_name = f'scrape-new-{int(time.time())}.json'
+        last_match = Match.query.filter_by(format_id=format.id).order_by(Match.upload_time.desc()).first()
+        comparison_timestamp = last_match.upload_time
+        logging.info(f"Timestamp of last match is {comparison_timestamp}. Scraping matches more recent than this...")
+
+    error_file_path = os.path.join(os.getcwd(), 'app', 'tasks', 'errors', error_file_name)
+
+    # query showdown api for all matches in desired format.
+    params = {"format": format.name}
+    if historical:
+        params['before'] = comparison_timestamp
+
+    response = requests.get(list_replays_url, params=params)
+    if response.status_code != 200:
+        logging.error(f"Something went wrong searching showdown: {response}")
+        exit(3)
+
+    matches_json = response.json()
+    matches_added_count = 0
+    while len(matches_json) > 0:
+        for match_json in matches_json:
+            if mode == 'new' and match_json['uploadtime'] < comparison_timestamp:
+                logging.info(f"Match {match_json['id']} with timestamp {match_json['uploadtime']} is older than"
+                             f" {comparison_timestamp}. Match scraping is complete. Added {matches_added_count} matches "
+                             f"to database.")
+                return
+            else:
+                logging.info(f"Processing match {match_json['id']}")
+                match_parser = None
+                try:
+                    match_parser = ShowdownMatchParser.construct_from_json(match_json, format.id, wait=True,
+                                                                           throw_if_exists=True)
+                    match_parser.parse_log_details()
+                    matches_added_count += 1
+                except AlreadyExistsException:
+                    logging.info(f"Match {match_json['id']} already exists, skipping.")
+                    continue
+                except CustomGameException:
+                    logging.error("This is a custom game. Will delete any data populated by it and skip.")
+                    if match_parser:
+                        db.session.delete(match_parser.match_record)
+                        db.session.commit()
+                    continue
+                except Exception as e:
+                    # any exception thrown beyond AlreadyExistsException is a genuine processing error. log it and continue
+                    logging.error(f"ERROR processing match {match_json['id']}: {e}")
+                    error_json = {
+                        "showdown_id": match_json['id'],
+                        "error": str(e),
+                        "match_json": match_json
+                    }
+                    with open(error_file_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps(error_json) + "\n")
+                    if match_parser:
+                        db.session.delete(match_parser.match_record)
+                        db.session.commit()
+                    continue
+
+        # 51 is the limit of matches that can be returned by this call, so if there are 51, there might be more results
+        # on the next page. Query for those.
+        if len(matches_json) == 51:
+            params["before"] = matches_json[-1]['uploadtime']
+            logging.info(
+                f"Processed all results from this page, getting more matches before timestamp {params['before']}")
+            response = requests.get(list_replays_url, params=params)
+            if response.status_code != 200:
+                logging.error(f"Something went wrong with web request: {response}")
+                exit(1)
+            else:
+                matches_json = response.json()
+        else:
+            logging.info(f"There were {len(matches_json)} matches in these results, so we've seen everything")
+            matches_json = []
+
+    # invalidate pokemon and format stats cache now that new data is present
+    ctx.invoke(clear)
+
+    # warm cache for format and most commonly used pokemon
+    ctx.invoke(warm, format_id=format_id)
+
+
+
 
 @showdown.command('scrape-new')
 @click.option('--format_id', '-f', type=int)

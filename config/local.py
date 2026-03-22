@@ -9,4 +9,6 @@ class LocalConfig(object):
     MYSQL_DB = "replaygenie"
     SQLALCHEMY_DATABASE_URI = f'mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}/{MYSQL_DB}'
 
+    BASE_URL = 'http://localhost:5000'
+
 

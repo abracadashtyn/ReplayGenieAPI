@@ -16,3 +16,5 @@ class Config(object):
     MIN_IOS_VERSION = 1
     MIN_WEB_VERSION = 1
     MIN_CATALOG_VERSION = 1
+
+    BASE_URL = 'https://arcvgc.com'

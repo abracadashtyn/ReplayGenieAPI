@@ -1,9 +1,12 @@
+import json
+import logging
+
 from flask import request
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import db
+from app import db, redis_cache
 from app.api.PaginationUtils import PaginationUtils
 from app.api.v0 import api, pagination_model, error_response
 from app.api.v0.pokemon_namespace import teammate_frequency_model
@@ -57,6 +60,17 @@ class FormatDetail(Resource):
     @format_ns.response(404, 'Format not found', error_response)
     @format_ns.response(500, 'Internal server error', error_response)
     def get(self, format_id):
+        # try to pull from cache first
+        top_pokemon_count = request.args.get('top_pokemon_count', 6, type=int)
+        cache_key = f"format_stats:{format_id}:{top_pokemon_count}"
+        cached_response = redis_cache.get(cache_key)
+        if cached_response is not None:
+            cached_response = json.loads(cached_response)
+            if cached_response['success'] is True:
+                logging.info(f"Serving FormatDetail response for format id {format_id} from cache.")
+                return cached_response
+
+        # if no cached response found, recalculate
         format = Format.query.get(format_id)
         if format is None:
             api.abort(404, 'Format not found')
@@ -95,6 +109,11 @@ class FormatDetail(Resource):
             pokemon_dict = Pokemon.query.get(pokemon_data[0]).to_dict()
             pokemon_dict['count'] = pokemon_data[1]
             response['data']['top_pokemon'].append(pokemon_dict)
+
+        # store response in cache for faster retrieval next time. Cache duration is 35 min, but will be manually
+        # invalidated by ingestion method when new data is added
+        redis_cache.setex(cache_key, 2100, json.dumps(response))
+        logging.info(f"Stored response in cache with key {cache_key}")
 
         return response
 
