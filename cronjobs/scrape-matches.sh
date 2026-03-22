@@ -9,7 +9,7 @@ echo "-----------------------------------------"
 source /root/ReplayGenieAPI/.env.production
 cd /root/ReplayGenieAPI
 
-/root/ReplayGenieAPI/venv/bin/flask showdown scrape-new -w
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 2
 
 P1_EXIT_CODE=$?
 END_P1_TIME=$(date +%s)
@@ -23,7 +23,7 @@ echo "Duration: ${MINUTES}m ${SECONDS}s (${DURATION} seconds)"
 echo "Exit code: ${P1_EXIT_CODE}"
 echo "-----------------------------------------"
 
-/root/ReplayGenieAPI/venv/bin/flask showdown scrape-new -f 1 -w
+/root/ReplayGenieAPI/venv/bin/flask showdown scrape -f 1
 
 P2_EXIT_CODE=$?
 END_P2_TIME=$(date +%s)
