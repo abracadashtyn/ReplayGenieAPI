@@ -1,3 +1,4 @@
+import enum
 import json
 import logging
 import os
@@ -293,7 +294,7 @@ def scrape_item_image(item_name):
     item_image_file = os.path.join(current_app.config['ITEM_IMAGES_DIR'], format_name_to_image_file(item_name))
     if not os.path.exists(item_image_file):
         item_image_url = f'{item_image_base_url}{serebii_formatted_name}.png'
-        print(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching item image from {item_image_url}")
+        click.echo(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching item image from {item_image_url}")
         time.sleep(current_app.config['REQUEST_DELAY'])
         item_image_response = requests.get(item_image_url, timeout=10)
         if item_image_response.status_code != 200:
@@ -335,7 +336,7 @@ def scrape_type_image(type_name):
     type_image_file = os.path.join(current_app.config['TYPE_IMAGES_DIR'], format_name_to_image_file(type_name))
     if not os.path.exists(type_image_file):
         type_image_url = f'{type_image_base_url}{serebii_formatted_name}.png'
-        print(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
+        click.echo(f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
         time.sleep(current_app.config['REQUEST_DELAY'])
         type_image_response = requests.get(type_image_url, timeout=10)
         if type_image_response.status_code != 200:
@@ -355,12 +356,12 @@ def scrape_type_images_cmd():
 
 
 """ Tera type image functions """
-def scrape_tera_type_image_cmd(tera_type_name):
+def scrape_tera_type_image(tera_type_name):
     tera_type_url = 'https://play.pokemonshowdown.com/sprites/types/'
     type_image_file = os.path.join(current_app.config['TERA_TYPE_IMAGES_DIR'], format_name_to_image_file(tera_type_name))
     if not os.path.exists(type_image_file):
         type_image_url = f'{tera_type_url}Tera{tera_type_name}.png'
-        print(
+        click.echo(
             f"Waiting {current_app.config['REQUEST_DELAY']} seconds then fetching type image from {type_image_url}")
         time.sleep(current_app.config['REQUEST_DELAY'])
         type_image_response = requests.get(type_image_url, timeout=10)
@@ -374,16 +375,87 @@ def scrape_tera_type_image_cmd(tera_type_name):
 # TODO add command for individual tera type image
 
 @pokemon.command('scrape-tera-types')
-def scrape_tera_types():
+def scrape_tera_type_images_cmd():
     types = PokemonType.query.all()
     for type in types:
         scrape_tera_type_image(type.name)
 
 
 
+@pokemon.command('validate-images')
+@click.option('--type', '-t',
+              type=click.Choice(['pokemon', 'item', 'type', 'teratype', 'all'], case_sensitive=False),
+              default='all',
+              help='the type of image being added. Will affect which table is being referenced.')
+def validate_images(type):
+    if type == 'pokemon' or type == 'all':
+        all_pokemon = Pokemon.query.all()
+        for pokemon in all_pokemon:
+            pokemon_image_file = os.path.join(current_app.config['POKEMON_IMAGES_DIR'], format_name_to_image_file(pokemon.name))
+            if not os.path.exists(pokemon_image_file):
+                click.echo(f"Could not find image for pokemon {pokemon.name} (id {pokemon.id})")
+
+    if type == 'item' or type == 'all':
+        all_items = Item.query.all()
+        for item in all_items:
+            item_image_file = os.path.join(current_app.config['ITEM_IMAGES_DIR'], format_name_to_image_file(item.name))
+            if not os.path.exists(item_image_file):
+                click.echo(f"Could not find image for item {item.name} (id {item.id})")
+
+    if type == 'type' or type == 'all':
+        all_types = PokemonType.query.all()
+        for type in all_types:
+            type_image_file = os.path.join(current_app.config['TYPE_IMAGES_DIR'], format_name_to_image_file(type.name))
+            if not os.path.exists(type_image_file):
+                click.echo(f"Could not find image for type {type.name} (id {type.id})")
+
+    if type == 'teratype' or type == 'all':
+        all_teratypes = PokemonType.query.all()
+        for teratype in all_teratypes:
+            teratype_image_file = os.path.join(current_app.config['TERA_TYPE_IMAGES_DIR'], teratype.name)
+            if not os.path.exists(teratype_image_file):
+                click.echo(f"Could not find image for type {teratype.name} (id {teratype.id})")
 
 
+@pokemon.command('manual-add-image')
+@click.option('--type', '-t',
+              type=click.Choice(['pokemon', 'item', 'type', 'teratype'], case_sensitive=False),
+              default='pokemon',
+              help='the type of image being added. Will affect which table is being referenced.')
+@click.option('--id', '-i', type=click.INT,
+              help='The ID of the record in the appropriate table to add an image for.')
+@click.option('--url', '-u', type=click.STRING, help='The URL of the image to add.')
+def manual_add_image(type, id, url):
+    record = None
+    image_file = None
+    if type == 'pokemon':
+        record = Pokemon.query.get(id)
+        image_file = os.path.join(current_app.config['POKEMON_IMAGES_DIR'], format_name_to_image_file(record.name))
+    elif type == 'item':
+        record = Item.query.get(id)
+        image_file = os.path.join(current_app.config['ITEM_IMAGES_DIR'], format_name_to_image_file(record.name))
+    elif type == 'type':
+        record = PokemonType.query.get(id)
+        image_file = os.path.join(current_app.config['TYPE_IMAGES_DIR'], format_name_to_image_file(record.name))
+    elif type == 'teratype':
+        record = PokemonType.query.get(id)
+        image_file = os.path.join(current_app.config['TERA_TYPE_IMAGES_DIR'],format_name_to_image_file(record.name))
 
+    else:
+        click.echo(f"Error: Unknown type {type}")
+        exit(1)
+
+    if record is None:
+        click.echo(f"Error: No record found for {type} id {id}")
+        exit(2)
+
+    click.echo(f"Fetching image for {record.name} from url {url}")
+    image = requests.get(url, timeout=10)
+    if image.status_code != 200:
+        click.echo(f"ERROR: could not fetch {record.name} image. CODE {image.status_code}")
+
+    with open(image_file, 'wb') as f:
+        f.write(image.content)
 
 
 
