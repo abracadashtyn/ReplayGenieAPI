@@ -16,6 +16,11 @@ pagination_model = api.model('Pagination', {
     'total_items': fields.Integer,
     'total_pages': fields.Integer
 })
+no_count_pagination_model = api.model('NoCountPagination', {
+    'page': fields.Integer,
+    'items_per_page': fields.Integer,
+    'has_next': fields.Boolean,
+})
 error_response = api.model('ErrorResponse', {
     'success': fields.Boolean(description='Always false for errors', default=False),
     'error': fields.String(description='Error message', required=True)
