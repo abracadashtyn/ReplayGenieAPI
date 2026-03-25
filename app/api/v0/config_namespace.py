@@ -1,11 +1,10 @@
 import logging
 
-from flask import request, current_app
+from flask import current_app
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.PaginationUtils import PaginationUtils
-from app.api.v0 import api, pagination_model, error_response
+from app.api.v0 import api, error_response
 from app.models import Format
 
 config_ns = Namespace('Config', description='Configuration endpoints for use in the various front-end environments')

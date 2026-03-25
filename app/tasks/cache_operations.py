@@ -1,5 +1,3 @@
-import logging
-
 import click
 import requests
 from flask import current_app
@@ -12,27 +10,29 @@ from app.tasks import bp
 def cacheops():
     pass
 
-def delete_keys(keys):
-    if keys:
+def delete_keys(match_pattern):
+    cursor = 0
+    while True:
+        cursor, keys = redis_cache.scan(cursor=cursor, match=match_pattern, count=100)
         redis_cache.delete(*keys)
-        click.echo(f"Cleared {len(keys)} cached entries")
-    else:
-        click.echo("Cache already empty")
+        if cursor == 0:
+            return
 
 @cacheops.command('clear-all')
 def clear():
-    delete_keys(redis_cache.keys(f"*"))
+    redis_cache.flushall()
 
 @cacheops.command('clear-pokemon')
 def clear_pokemon():
-    delete_keys(redis_cache.keys(f"pokemon_stats:*:*"))
+    delete_keys("pokemon_stats:v*:*:*")
 
 @cacheops.command('clear-format')
 def clear_pokemon():
-    delete_keys(redis_cache.keys(f"format_stats:*:*"))
+    delete_keys("format_stats:v*:*:*")
 
 @cacheops.command('warm')
 @click.option('--format_id', '-f', type=int)
+@click.option('--api_version', '-v', type=int, default=0, help="Version of the API to warm the cache for.")
 def warm(format_id):
     format_url = f"{current_app.config['BASE_URL']}/api/v0/formats/{format_id}?top_pokemon_count=10"
     click.echo(f"Calling {format_url} to warm format cache")

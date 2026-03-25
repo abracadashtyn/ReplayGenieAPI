@@ -1,9 +1,9 @@
-from flask import jsonify, request
+from flask import request
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.PaginationUtils import PaginationUtils
-from app.api.v0 import api, pagination_model, error_response
+from app.api.v0.pagination import pagination_model, paginate_query
+from app.api.v0 import api, error_response
 from app.models import Move
 
 moves_ns = Namespace('Moves', description='Endpoints related to pokemon moves.')
@@ -38,15 +38,6 @@ class MoveList(Resource):
                 search_string = f"%{search_string}%"
             query = query.filter(Move.name.like(search_string))
         try:
-            return PaginationUtils.paginate_query(query, page, limit)
+            return paginate_query(query, page, limit)
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for moves: {e}')
-
-
-# TODO implement method to get a specific move and list matches it was used in.
-
-# TODO create
-
-# TODO update
-
-# TODO delete

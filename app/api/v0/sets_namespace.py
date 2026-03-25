@@ -5,7 +5,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql.functions import count, func
 
 from app import db
-from app.api.v0 import api, pagination_model, error_response
+from app.api.v0.pagination import pagination_model
+from app.api.v0 import api, error_response
 from app.api.v0.formats_namespace import format_model
 from app.api.v0.matches_namespace import default_match_limit, pokemon_instance_model
 from app.models import Match, Format

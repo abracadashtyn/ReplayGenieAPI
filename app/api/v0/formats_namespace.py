@@ -7,8 +7,8 @@ from sqlalchemy import func, case
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db, redis_cache
-from app.api.PaginationUtils import PaginationUtils
-from app.api.v0 import api, pagination_model, error_response
+from app.api.v0.pagination import pagination_model, paginate_query
+from app.api.v0 import api, error_response
 from app.api.v0.pokemon_namespace import teammate_frequency_model
 from app.models import Format, Match, PlayerMatchPokemon, PlayerMatch, Pokemon
 
@@ -38,7 +38,7 @@ class FormatList(Resource):
         limit = request.args.get('limit', 50, type=int)
         query = Format.query.order_by(Format.name)
         try:
-            return PaginationUtils.paginate_query(query, page, limit)
+            return paginate_query(query, page, limit)
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for formats: {e}')
 
@@ -62,7 +62,7 @@ class FormatDetail(Resource):
     def get(self, format_id):
         # try to pull from cache first
         top_pokemon_count = request.args.get('top_pokemon_count', 6, type=int)
-        cache_key = f"format_stats:{format_id}:{top_pokemon_count}"
+        cache_key = f"format_stats:v0:{format_id}:{top_pokemon_count}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
             cached_response = json.loads(cached_response)

@@ -2,8 +2,8 @@ from flask import request
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.PaginationUtils import PaginationUtils
-from app.api.v0 import api, pagination_model, error_response
+from app.api.v0.pagination import pagination_model, paginate_query
+from app.api.v0 import api, error_response
 from app.models import PokemonType
 
 poke_type_ns = Namespace('Types', description='Endpoints related to pokemon types')
@@ -39,7 +39,7 @@ class PokemonTypeList(Resource):
                 search_string = f"%{search_string}%"
             query = query.filter(PokemonType.name.like(search_string))
         try:
-            return PaginationUtils.paginate_query(query, page, limit)
+            return paginate_query(query, page, limit)
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for pokemon types: {e}')
 

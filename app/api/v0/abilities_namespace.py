@@ -2,8 +2,8 @@ from flask import request
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.PaginationUtils import PaginationUtils
-from app.api.v0 import api, pagination_model, error_response
+from app.api.v0.pagination import pagination_model, paginate_query
+from app.api.v0 import api, error_response
 from app.models import Ability
 
 abilities_ns = Namespace('Abilities', description='Endpoints related to pokemon abilities.')
@@ -38,34 +38,6 @@ class AbilityList(Resource):
                 search_string = f"%{search_string}%"
             query = query.filter(Ability.name.like(search_string))
         try:
-            return PaginationUtils.paginate_query(query, page, limit)
+            return paginate_query(query, page, limit)
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for abilities: {e}')
-
-
-"""Fetches a specific ability by id
-ability_detail_response = api.model('AbilityDetailResponse', {
-    'success': fields.Boolean,
-    'data': fields.List(fields.Nested(ability_model))
-})
-@abilities_ns.route('/<int:ability_id>')
-class AbilityDetail(Resource):
-    @abilities_ns.doc('get_ability')
-    @abilities_ns.response(404, 'Ability not found', error_response)
-    @abilities_ns.response(500, 'Internal server error', error_response)
-    @abilities_ns.marshal_with(ability_detail_response, code=200)
-    def get(self, ability_id):
-        try:
-            ability_record = Ability.query.filter_by(id=ability_id).first()
-        except SQLAlchemyError as e:
-            # Handle database errors specifically
-            api.abort(500, f'Error querying database for ability with ID {ability_id}: {e}')
-
-        if not ability_record:
-            api.abort(404, f'Ability with ID {ability_id} not found')
-
-        response = {
-            'success': True,
-            'data': ability_record.to_dict()
-        }
-        return response"""

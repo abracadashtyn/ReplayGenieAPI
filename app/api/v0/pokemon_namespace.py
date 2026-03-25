@@ -10,8 +10,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db, redis_cache
-from app.api.PaginationUtils import PaginationUtils
-from app.api.v0 import bp, api, pagination_model, error_response
+from app.api.v0.pagination import pagination_model, paginate_query
+from app.api.v0 import api, error_response
 from app.api.v0.abilities_namespace import ability_model
 from app.api.v0.items_namespace import item_model
 from app.api.v0.moves_namespace import move_model
@@ -78,7 +78,7 @@ class PokemonList(Resource):
             query = query.filter(Pokemon.name.like(search_string))
 
         try:
-            return PaginationUtils.paginate_query(query, page, limit)
+            return paginate_query(query, page, limit)
 
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for pokemon types: {e}')
@@ -140,7 +140,7 @@ class PokemonDetail(Resource):
             else current_app.config['CURRENT_FORMAT_ID']
 
         # see if a cached response for this pokemon already exists, and if so, return that instead of recomputing stats
-        cache_key = f"pokemon_stats:{format_id}:{pokemon_id}"
+        cache_key = f"pokemon_stats:v0:{format_id}:{pokemon_id}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
             cached_response = json.loads(cached_response)

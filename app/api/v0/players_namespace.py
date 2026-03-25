@@ -4,8 +4,8 @@ from sqlalchemy import func, case
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
-from app.api.PaginationUtils import PaginationUtils
-from app.api.v0 import api, pagination_model, error_response
+from app.api.v0.pagination import pagination_model, paginate_query
+from app.api.v0 import api, error_response
 from app.models import Player, PlayerMatchPokemon, PlayerMatch, Match, Pokemon
 
 players_ns = Namespace('Players', description='Endpoints related to pokemon showdown player accounts')
@@ -39,7 +39,7 @@ class PlayerListRoute(Resource):
                 search_string = f"%{search_string}%"
             query = query.filter(Player.name.like(search_string))
         try:
-            return PaginationUtils.paginate_query(query, page, limit)
+            return paginate_query(query, page, limit)
         except SQLAlchemyError as e:
             api.abort(500, f'Error querying database for formats: {e}')\
 
