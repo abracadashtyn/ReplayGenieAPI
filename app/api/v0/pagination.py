@@ -1,8 +1,8 @@
 from flask_restx import fields
-from app.api.v0 import api
+from app.api.v0 import api_v0
 
 
-pagination_model = api.model('Pagination', {
+pagination_model = api_v0.model('Pagination', {
     'page': fields.Integer,
     'items_per_page': fields.Integer,
     'total_items': fields.Integer,

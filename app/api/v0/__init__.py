@@ -2,21 +2,21 @@ from flask import Blueprint
 from flask_restx import Api, fields
 
 
-bp = Blueprint('api', __name__, url_prefix='/api/v0')
-api = Api(
+bp = Blueprint('api_v0', __name__, url_prefix='/api/v0')
+api_v0 = Api(
     bp,
     version='0.1',
     title='ReplayGenie API',
     doc='/docs'
 )
 
-error_response = api.model('ErrorResponse', {
+error_response = api_v0.model('ErrorResponse', {
     'success': fields.Boolean(description='Always false for errors', default=False),
     'error': fields.String(description='Error message', required=True)
 })
 
 # Global handler for unexpected errors that don't have their own handler defined
-@api.errorhandler(Exception)
+@api_v0.errorhandler(Exception)
 def handle_error(error):
     return {'success': False, 'error': 'Internal server error'}, 500
 

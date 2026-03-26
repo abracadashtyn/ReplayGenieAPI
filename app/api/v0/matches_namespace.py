@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 from app.api.v0.pagination import pagination_model
-from app.api.v0 import api, error_response
+from app.api.v0 import api_v0, error_response
 from app.api.v0.abilities_namespace import ability_model
 from app.api.v0.formats_namespace import format_model
 from app.api.v0.items_namespace import item_model
@@ -16,7 +16,7 @@ from app.api.v0.types_namespace import pokemon_type_model
 from app.models import Match, PlayerMatchPokemon, PlayerMatch, Player, Pokemon
 
 matches_ns = Namespace('Matches', description='Operations related to matches')
-api.add_namespace(matches_ns, path='/matches')
+api_v0.add_namespace(matches_ns, path='/matches')
 default_match_limit = 50
 
 def query_and_format_matches(query, page, limit):
@@ -24,7 +24,7 @@ def query_and_format_matches(query, page, limit):
     try:
         paginated_results = query.paginate(page=page, per_page=limit, error_out=False)
     except SQLAlchemyError as e:
-        api.abort(500, f'Error querying database for matches: {e}')
+        api_v0.abort(500, f'Error querying database for matches: {e}')
 
     response_json = {
         'success': True,
@@ -58,7 +58,7 @@ def query_and_format_matches(query, page, limit):
     return response_json
 
 """Fetches a list of all matches"""
-base_match_model = api.model('BaseMatch', {
+base_match_model = api_v0.model('BaseMatch', {
     'id': fields.Integer,
     'showdown_id': fields.String,
     'upload_time': fields.DateTime,
@@ -68,18 +68,18 @@ base_match_model = api.model('BaseMatch', {
     'set_id': fields.String,
     'position_in_set': fields.Integer,
 })
-pokemon_team_overview_model = api.inherit('BasePokemon', pokemon_base_species_model, {
+pokemon_team_overview_model = api_v0.inherit('BasePokemon', pokemon_base_species_model, {
     'item': fields.Nested(item_model),
     'tera_type': fields.Nested(pokemon_type_model)
 })
-player_match_model = api.inherit("PlayerMatchDetails", player_model, {
+player_match_model = api_v0.inherit("PlayerMatchDetails", player_model, {
     'winner': fields.Boolean,
     'team': fields.List(fields.Nested(pokemon_team_overview_model)),
 })
-match_model = api.inherit('Match', base_match_model, {
+match_model = api_v0.inherit('Match', base_match_model, {
     'players': fields.List(fields.Nested(player_match_model)),
 })
-match_list_response = api.model('MatchListResponse', {
+match_list_response = api_v0.model('MatchListResponse', {
     'success': fields.Boolean,
     'data': fields.List(fields.Nested(match_model)),
     'pagination': fields.Nested(pagination_model)
@@ -119,26 +119,26 @@ class MatchList(Resource):
 
 
 """ Fetches details for a specific match """
-pokemon_instance_model = api.inherit("PokemonInstance", pokemon_model, {
+pokemon_instance_model = api_v0.inherit("PokemonInstance", pokemon_model, {
     'ability': fields.Nested(ability_model),
     'item': fields.Nested(item_model),
     'tera_type': fields.Nested(pokemon_type_model),
     'moves': fields.List(fields.Nested(move_model))
 })
-player_match_detail_model = api.inherit("PlayerMatchDetails", player_model, {
+player_match_detail_model = api_v0.inherit("PlayerMatchDetails", player_model, {
     'winner': fields.Boolean,
     'team': fields.List(fields.Nested(pokemon_instance_model)),
 })
-set_match_overview_model = api.model('SetMatchOverview', {
+set_match_overview_model = api_v0.model('SetMatchOverview', {
     'id': fields.Integer,
     'showdown_id': fields.String,
     'position_in_set': fields.Integer,
 })
-match_detail_model = api.inherit('MatchDetails', base_match_model, {
+match_detail_model = api_v0.inherit('MatchDetails', base_match_model, {
     'players': fields.List(fields.Nested(player_match_detail_model)),
     'set_matches': fields.List(fields.Nested(set_match_overview_model))
 })
-match_detail_response = api.model('MatchDetailResponse', {
+match_detail_response = api_v0.model('MatchDetailResponse', {
     'success': fields.Boolean,
     'data': fields.List(fields.Nested(match_detail_model))
 })
@@ -152,10 +152,10 @@ class MatchDetails(Resource):
         try:
             match_record = Match.query.filter_by(id=match_id).first()
         except SQLAlchemyError as e:
-            api.abort(500, f'Error querying database for match with ID {match_id}: {e}')
+            api_v0.abort(500, f'Error querying database for match with ID {match_id}: {e}')
 
         if not match_record:
-            api.abort(404, f'Match with ID {match_id} not found')
+            api_v0.abort(404, f'Match with ID {match_id} not found')
 
         response = {
             'success': True,
@@ -193,16 +193,16 @@ class MatchDetails(Resource):
         return response
 
 
-search_pokemon_request_model = api.model('SearchPokemonModel', {
+search_pokemon_request_model = api_v0.model('SearchPokemonModel', {
     'id': fields.Integer(required=True),
     'item_id': fields.Integer,
     'tera_type_id': fields.Integer,
 })
-search_request_model = api.model('SearchModel', {
+search_request_model = api_v0.model('SearchModel', {
     'limit': fields.Integer(example=default_match_limit),
     'page': fields.Integer(example=1),
     'format_id': fields.Integer(example=1),
-    'rating': fields.Nested(api.model('RatingModel', {
+    'rating': fields.Nested(api_v0.model('RatingModel', {
         'min': fields.Integer(example=1000),
         'max': fields.Integer(example=1500),
         'unrated_only': fields.Boolean(example=False),
@@ -215,7 +215,7 @@ search_request_model = api.model('SearchModel', {
         example='time',
         description='Sort results by time (most recent to oldest) or rating (highest first)'
     ),
-    'time_range': fields.Nested(api.model('TimeRangeModel', {
+    'time_range': fields.Nested(api_v0.model('TimeRangeModel', {
         'start': fields.Integer(description='Inclusive, in Unix epoch timestamp format'),
         'end': fields.Integer(description='Inclusive, in Unix epoch timestamp format'),
     })),
@@ -225,11 +225,11 @@ search_request_model = api.model('SearchModel', {
 })
 @matches_ns.route('/search')
 class Search(Resource):
-    @api.expect(search_request_model, validate=True)
+    @api_v0.expect(search_request_model, validate=True)
     @matches_ns.response(500, 'Internal server error', error_response)
     @matches_ns.marshal_with(match_list_response, code=200)
     def post(self):
-        search_data = api.payload
+        search_data = api_v0.payload
 
         page = search_data['page'] if 'page' in search_data else 1
         limit = search_data['limit'] if 'limit' in search_data else default_match_limit
@@ -281,7 +281,7 @@ class Search(Resource):
         if 'rating' in search_data:
             if 'unrated_only' in search_data['rating'] and search_data['rating']['unrated_only'] is True:
                 if 'min' in search_data['rating'] or 'max' in search_data['rating']:
-                    api.abort(400, "'rating' parameters are invalid - cannot provide rating range while 'unrated_only' "
+                    api_v0.abort(400, "'rating' parameters are invalid - cannot provide rating range while 'unrated_only' "
                                    "parameter is set to 'true'.")
 
                 query = query.filter(Match.rating.is_(None))

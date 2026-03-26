@@ -1,61 +1,62 @@
 from flask import request, current_app
 from flask_restx import Namespace, fields, Resource
-
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql.functions import count, func
 
 from app import db
-from app.api.v0.pagination import pagination_model
-from app.api.v0 import api_v0, error_response
-from app.api.v0.formats_namespace import format_model
-from app.api.v0.matches_namespace import default_match_limit, pokemon_instance_model
+from app.api.v1 import api_v1
+from app.api.v1.errors import APIError, error_response, NotFoundError
+from app.api.v1.formats_namespace import format_model
+from app.api.v1.matches_namespace import default_match_limit, pokemon_instance_model
+from app.api.v1.pagination import pagination_model, paginate_query
+from app.api.v1.players_namespace import player_model
 from app.models import Match, Format
 
-sets_ns = Namespace('Sets', description='Operations related to sets (groupings of n matches as described by the format, n=3 in all existing formats)')
-api_v0.add_namespace(sets_ns, path='/sets')
+sets_ns = Namespace('Sets',
+                    description='Operations related to sets (groupings of n matches as described by the format, n=3 in all existing formats)')
+api_v1.add_namespace(sets_ns, path='/sets')
 default_set_limit = 20
 
-set_match_model = api_v0.model('SetMatchModel', {
-    'position_in_set': fields.Integer,
-    'id': fields.Integer,
-    'showdown_id': fields.String,
-    'upload_time': fields.DateTime,
-    'rating': fields.Integer,
-    'private': fields.Boolean,
-    'winner_id': fields.Integer,
+set_match_model = api_v1.model('SetMatchModel', {
+    'position_in_set': fields.Integer(example=1),
+    'id': fields.Integer(example=456),
+    'showdown_id': fields.String(example="gen9vgc2026regibo3-2565555555"),
+    'upload_time': fields.DateTime(example="2026-01-01T17:30:00"),
+    'rating': fields.Integer(example=None),
+    'private': fields.Boolean(example=True),
+    'winner_id': fields.Integer(example=400),
 })
-base_set_model = api_v0.model('BaseSetModel', {
-    'id': fields.Integer,
-    'max_rating': fields.Integer,
-    'match_count': fields.Integer,
+base_set_model = api_v1.model('BaseSetModel', {
+    'id': fields.Integer(example=456),
+    'max_rating': fields.Integer(example=1500),
+    'match_count': fields.Integer(example=3),
     'format': fields.Nested(format_model),
     'matches': fields.List(fields.Nested(set_match_model)),
 })
-set_player_model = api_v0.model('SetPlayerModel', {
-    'id': fields.Integer,
-    'name': fields.String,
-    'win_count': fields.Integer,
+set_player_model = api_v1.inherit('SetPlayerModel', player_model, {
+    'win_count': fields.Integer(example=2),
 })
-set_model = api_v0.inherit('SetModel', base_set_model, {
+set_model = api_v1.inherit('SetModel', base_set_model, {
     'players': fields.List(fields.Nested(set_player_model)),
 })
-set_list_response = api_v0.model('SetListResponse', {
-    'success': fields.Boolean,
+set_list_response = api_v1.model('SetListResponse', {
+    'success': fields.Boolean(example=True),
     'data': fields.List(fields.Nested(set_model)),
     'pagination': fields.Nested(pagination_model)
 })
+"""Get a list of all sets for a given format"""
 @sets_ns.route('/')
 class SetList(Resource):
     @sets_ns.doc('list_sets')
-    @sets_ns.param('page', 'Page number', type='integer', default=1)
-    @sets_ns.param('limit', 'Items per page', type='integer', default=default_set_limit)
-    @sets_ns.param('format_id', 'Format ID', type='integer')
-    @sets_ns.param('rated_only', 'If true, returns only sets with at least one rated match.',
+    @sets_ns.param('page', description='Page number', type='integer', default=1)
+    @sets_ns.param('limit', description='Items per page', type='integer', default=default_set_limit)
+    @sets_ns.param('format_id', description='Format ID', type='integer')
+    @sets_ns.param('rated_only', description='If true, returns only sets with at least one rated match.',
                    type='boolean', default=False)
-    @sets_ns.param('complete_only', 'Includes only sets that have all three matches present',
+    @sets_ns.param('complete_only', description='Includes only sets that have all three matches present',
                    type='boolean', default=False)
-    @sets_ns.param('order_by', 'Sort results by time (newest to oldest) or best rating in set '
-                               '(highest to lowest)',type='string', enum=['time', 'rating'], default='time')
+    @sets_ns.param('order_by', description='Sort results by time (newest to oldest) or best rating in set '
+                               '(highest to lowest)', type='string', enum=['time', 'rating'], default='time')
     @sets_ns.response(500, 'Internal server error', error_response)
     @sets_ns.marshal_with(set_list_response, code=200)
     def get(self):
@@ -88,61 +89,52 @@ class SetList(Resource):
             query = query.order_by(func.max(Match.upload_time).desc())
 
         try:
-            paginated_results = query.paginate(page=page, per_page=limit, error_out=False)
+            response_json, query_results = paginate_query(query, page, limit)
+            for set_record in query_results:
+                set_dict = {
+                    'id': set_record.set_id,
+                    'max_rating': set_record.max_rating,
+                    'match_count': set_record.match_count,
+                    'format': format_data.to_dict(),
+                    'matches': [],
+                    'players': []
+                }
+                match_records = Match.query.filter_by(set_id=set_record.set_id).order_by(Match.position_in_set).all()
+                player_dict = {}
+                for match_record in match_records:
+                    match_dict = match_record.to_dict()
+                    for player_match in match_record.players:
+                        if player_match.player.id not in player_dict:
+                            player_dict[player_match.player.id] = {
+                                'id': player_match.player.id,
+                                'name': player_match.player.name,
+                                'win_count': 0
+                            }
+                        if player_match.won_match is True:
+                            player_dict[player_match.player.id]['win_count'] += 1
+                            match_dict['winner_id'] = player_match.player.id
+                    set_dict['matches'].append(match_dict)
+                set_dict['players'] = [x for x in player_dict.values()]
+                response_json['data'].append(set_dict)
+            return response_json
+
         except SQLAlchemyError as e:
-            api_v0.abort(500, f'Error querying database for matches: {e}')
+            raise APIError(f'error querying database for set list: {e}', code='DB_ERROR', status=500)
 
-        response_json = {
-            'success': True,
-            'data': [],
-            'pagination': {
-                'page': page,
-                'items_per_page': limit,
-                'total_pages': paginated_results.pages,
-                'total_items': paginated_results.total
-            }
-        }
-        for set_record in paginated_results:
-            set_dict = {
-                'id': set_record.set_id,
-                'max_rating': set_record.max_rating,
-                'match_count': set_record.match_count,
-                'format': format_data.to_dict(),
-                'matches': [],
-                'players': []
-            }
-            match_records = Match.query.filter_by(set_id=set_record.set_id).order_by(Match.position_in_set).all()
-            player_dict = {}
-            for match_record in match_records:
-                match_dict = match_record.to_dict()
-                for player_match in match_record.players:
-                    if player_match.player.id not in player_dict:
-                        player_dict[player_match.player.id] = {
-                            'id': player_match.player.id,
-                            'name': player_match.player.name,
-                            'win_count': 0
-                        }
-                    if player_match.won_match is True:
-                        player_dict[player_match.player.id]['win_count'] += 1
-                        match_dict['winner_id'] = player_match.player.id
-                set_dict['matches'].append(match_dict)
-            set_dict['players'] = [x for x in player_dict.values()]
-            response_json['data'].append(set_dict)
-        return response_json
 
-""" Fetches details for a specific set """
-player_match_detail_model = api_v0.inherit("PlayerSetDetails", set_player_model, {
+player_match_detail_model = api_v1.inherit("PlayerSetDetails", set_player_model, {
     'team': fields.List(fields.Nested(pokemon_instance_model)),
 })
-set_detail_model = api_v0.inherit('SetDetailModel', base_set_model, {
+set_detail_model = api_v1.inherit('SetDetailModel', base_set_model, {
     'players': fields.List(fields.Nested(player_match_detail_model)),
 })
-set_detail_response = api_v0.model('SetDetailResponse', {
-    'success': fields.Boolean,
+set_detail_response = api_v1.model('SetDetailResponse', {
+    'success': fields.Boolean(example=True),
     'data': fields.List(fields.Nested(set_detail_model))
 })
+""" Fetches details for a specific set """
 @sets_ns.route('/<int:set_id>')
-class SetDetails(Resource):
+class SetDetail(Resource):
     @sets_ns.doc('get_details')
     @sets_ns.response(404, 'Set not found', error_response)
     @sets_ns.response(500, 'Internal server error', error_response)
@@ -151,10 +143,10 @@ class SetDetails(Resource):
         try:
             match_records = Match.query.filter_by(set_id=set_id).all()
         except SQLAlchemyError as e:
-            api_v0.abort(500, f'Error querying database for set with ID {set_id}: {e}')
+            raise APIError(f'Error querying database for set with ID {set_id}: {e}', code='DB_ERROR', status=500)
 
         if not match_records:
-            api_v0.abort(404, f'Matches with set ID {set_id} not found')
+            raise NotFoundError(f'Matches with set ID {set_id} not found')
 
         response = {
             'success': True,

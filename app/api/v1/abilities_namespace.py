@@ -2,24 +2,26 @@ from flask import request
 from flask_restx import Namespace, fields, Resource
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.v0.pagination import pagination_model, paginate_query
-from app.api.v0 import api_v0, error_response
+from app.api.v1.errors import APIError, error_response
+from app.api.v1.pagination import pagination_model, paginate_query
+from app.api.v1 import api_v1
 from app.models import Ability
 
 abilities_ns = Namespace('Abilities', description='Endpoints related to pokemon abilities.')
-api_v0.add_namespace(abilities_ns, path='/abilities')
+api_v1.add_namespace(abilities_ns, path='/abilities')
 
 
-"""Fetches a list of all abilities"""
-ability_model = api_v0.model('Ability', {
-    'id': fields.Integer,
-    'name': fields.String,
+ability_model = api_v1.model('Ability', {
+    'id': fields.Integer(example=1),
+    'name': fields.String(example="Overgrow"),
 })
-ability_list_response = api_v0.model('AbilityListResponse', {
-    'success': fields.Boolean,
+ability_list_response = api_v1.model('AbilityListResponse', {
+    'success': fields.Boolean(example=True),
     'data': fields.List(fields.Nested(ability_model)),
     'pagination': fields.Nested(pagination_model)
 })
+
+"""Fetches a list of all abilities"""
 @abilities_ns.route('/')
 class AbilityList(Resource):
     @abilities_ns.doc('list_abilities')
@@ -37,7 +39,9 @@ class AbilityList(Resource):
             if '%' not in search_string:
                 search_string = f"%{search_string}%"
             query = query.filter(Ability.name.like(search_string))
+
         try:
-            return paginate_query(query, page, limit)
+            response, data = paginate_query(query, page, limit)
+            return response
         except SQLAlchemyError as e:
-            api_v0.abort(500, f'Error querying database for abilities: {e}')
+            raise APIError(f'Error querying database for abilities: {e}', code='DB_ERROR', status=500)

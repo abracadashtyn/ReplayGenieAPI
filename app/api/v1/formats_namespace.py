@@ -7,30 +7,32 @@ from sqlalchemy import func, case
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db, redis_cache
-from app.api.v0.pagination import pagination_model, paginate_query
-from app.api.v0 import api_v0, error_response
-from app.api.v0.pokemon_namespace import teammate_frequency_model
+from app.api.v1 import api_v1
+from app.api.v1.errors import APIError, error_response, NotFoundError
+from app.api.v1.pagination import pagination_model, paginate_query
+from app.api.v1.pokemon_namespace import teammate_frequency_model
 from app.models import Format, Match, PlayerMatchPokemon, PlayerMatch, Pokemon
 
 format_ns = Namespace('Formats', description='Endpoints related to game format, as specified by showdown API.')
-api_v0.add_namespace(format_ns, path='/formats')
+api_v1.add_namespace(format_ns, path='/formats')
 
-"""Fetches a list of all formats"""
-format_model = api_v0.model('Format', {
-    'id': fields.Integer,
-    'name': fields.String,
-    'formatted_name': fields.String,
+format_model = api_v1.model('Format', {
+    'id': fields.Integer(example=2),
+    'name': fields.String(example="gen9vgc2026regibo3"),
+    'formatted_name': fields.String(example="[Gen 9] VGC 2026 Reg I (Bo3)"),
 })
-format_list_response = api_v0.model('FormatListResponse', {
-    'success': fields.Boolean,
+format_list_response = api_v1.model('FormatListResponse', {
+    'success': fields.Boolean(example=True),
     'data': fields.List(fields.Nested(format_model)),
     'pagination': fields.Nested(pagination_model)
 })
+
+"""Fetches a list of all formats"""
 @format_ns.route('/')
 class FormatList(Resource):
     @format_ns.doc('list_formats')
-    @format_ns.param('page', 'Page number', type='integer', default=1)
-    @format_ns.param('limit', 'Items per page', type='integer', default=50)
+    @format_ns.param('page', description='Page number', type='integer', default=1)
+    @format_ns.param('limit', description='Items per page', type='integer', default=50)
     @format_ns.response(500, 'Internal server error', error_response)
     @format_ns.marshal_with(format_list_response, code=200)
     def get(self):
@@ -38,20 +40,23 @@ class FormatList(Resource):
         limit = request.args.get('limit', 50, type=int)
         query = Format.query.order_by(Format.name)
         try:
-            return paginate_query(query, page, limit)
+            response, data = paginate_query(query, page, limit)
+            return response
         except SQLAlchemyError as e:
-            api_v0.abort(500, f'Error querying database for formats: {e}')
+            raise APIError(f'Error querying database for formats: {e}', code='DB_ERROR', status=500)
 
 
-format_detail_model = api_v0.inherit('FormatDetailModel', format_model, {
-    'match_count': fields.Integer,
-    'team_count': fields.Integer,
+format_detail_model = api_v1.inherit('FormatDetailModel', format_model, {
+    'match_count': fields.Integer(example=500),
+    'team_count': fields.Integer(example=1000),
     'top_pokemon': fields.List(fields.Nested(teammate_frequency_model)),
 })
-format_detail_response = api_v0.model('FormatDetailResponse', {
-    'success': fields.Boolean,
+format_detail_response = api_v1.model('FormatDetailResponse', {
+    'success': fields.Boolean(example=True),
     'data': fields.List(fields.Nested(format_model))
 })
+"""Fetches details about a specific format, including total number of matches in the format and the top n most used 
+pokemon in games of this format."""
 @format_ns.route('/<int:format_id>')
 class FormatDetail(Resource):
     @format_ns.doc('get_format')
@@ -62,7 +67,7 @@ class FormatDetail(Resource):
     def get(self, format_id):
         # try to pull from cache first
         top_pokemon_count = request.args.get('top_pokemon_count', 6, type=int)
-        cache_key = f"format_stats:v0:{format_id}:{top_pokemon_count}"
+        cache_key = f"format_stats:v1:{format_id}:{top_pokemon_count}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
             cached_response = json.loads(cached_response)
@@ -73,7 +78,7 @@ class FormatDetail(Resource):
         # if no cached response found, recalculate
         format = Format.query.get(format_id)
         if format is None:
-            api_v0.abort(404, 'Format not found')
+            raise NotFoundError(f'Format with id {format_id} not found.')
 
         response = {
             'success': True,
@@ -124,4 +129,3 @@ class FormatDetail(Resource):
         logging.info(f"Stored response in cache with key {cache_key}")
 
         return response
-

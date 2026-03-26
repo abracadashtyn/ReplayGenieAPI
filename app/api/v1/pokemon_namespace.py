@@ -1,6 +1,5 @@
 import json
 import logging
-import time
 import uuid
 from collections import Counter
 
@@ -10,65 +9,70 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db, redis_cache
-from app.api.v0.pagination import pagination_model, paginate_query
-from app.api.v0 import api_v0, error_response
-from app.api.v0.abilities_namespace import ability_model
-from app.api.v0.items_namespace import item_model
-from app.api.v0.moves_namespace import move_model
-from app.api.v0.types_namespace import pokemon_type_model
+from app.api.v1 import api_v1
+from app.api.v1.errors import APIError, error_response, NotFoundError
+from app.api.v1.abilities_namespace import ability_model
+from app.api.v1.items_namespace import item_model
+from app.api.v1.moves_namespace import move_model
+from app.api.v1.pagination import pagination_model, paginate_query
+from app.api.v1.types_namespace import pokemon_type_model
 from app.models import Pokemon, PokemonType, Item, Match, Move
 
-pokemon_ns = Namespace('Pokemon')
-api_v0.add_namespace(pokemon_ns, path='/pokemon')
+pokemon_ns = Namespace('Pokemon', description="Endpoints related to pokemon information.")
+api_v1.add_namespace(pokemon_ns, path='/pokemon')
 
-
-"""Fetch a list of all Pokemon"""
-pokemon_base_species_model = api_v0.model('PokemonReference', {
-    'id': fields.Integer,
-    'name': fields.String,
-    'pokedex_number': fields.Integer,
-    'image_url': fields.String,
+pokemon_base_species_model = api_v1.model('PokemonReference', {
+    'id': fields.Integer(example=19),
+    'name': fields.String(example="Rattata"),
+    'pokedex_number': fields.Integer(example=19),
+    'image_url': fields.String(example="https://arcvgc.com/static/images/pokemon/rattata.png"),
 })
-pokemon_model = api_v0.model('PokemonModel', {
-    'id': fields.Integer,
-    'pokedex_number': fields.Integer,
-    'name': fields.String,
-    'tier': fields.String,
+pokemon_model = api_v1.model('PokemonModel', {
+    'id': fields.Integer(example=1034),
+    'pokedex_number': fields.Integer(example=19),
+    'name': fields.String(example="Rattata-Alola"),
+    'tier': fields.String(example="Illegal", description="As defined by Pokemon Showdown/Smogon, see "
+                                                         "https://www.smogon.com/bw/articles/bw_tiers for more information."),
     'types': fields.List(fields.Nested(pokemon_type_model)),
-    'image_url': fields.String,
+    'image_url': fields.String(example="https://arcvgc.com/static/images/pokemon/rattata-alola.png"),
     'base_species': fields.Nested(pokemon_base_species_model, allow_null=True,
                                   description='Base form if this is a variant (e.g., Alolan forms)')
 })
-pokemon_list_response = api_v0.model('PokemonListResponse', {
-    'success': fields.Boolean,
+pokemon_list_response = api_v1.model('PokemonListResponse', {
+    'success': fields.Boolean(example=True),
     'data': fields.List(fields.Nested(pokemon_model)),
     'pagination': fields.Nested(pagination_model)
 })
+"""Fetch a list of all Pokemon"""
 @pokemon_ns.route('/')
 class PokemonList(Resource):
     @pokemon_ns.doc('list_pokemon')
-    @pokemon_ns.param('page', 'Page number', type='integer', default=1)
-    @pokemon_ns.param('limit', 'Items per page', type='integer', default=50)
-    @pokemon_ns.param('exclude_illegal', 'Filters list so no pokemon from the illegal tier appear in results', type='boolean', default=True)
-    @pokemon_ns.param('type_ids', 'Comma separated list of type IDs to filter pokemon on',type='string')
+    @pokemon_ns.param('page', description='Page number', type='integer', default=1)
+    @pokemon_ns.param('limit', description='Items per page', type='integer', default=50)
+    @pokemon_ns.param('exclude_illegal', type='boolean', default=True,
+                      description='Filters list so no pokemon from the illegal tier appear in results')
+    @pokemon_ns.param('type_ids', type='string',
+                      description='Comma separated list of type IDs to filter pokemon on. Will include all pokemon who '
+                                  'match any of these types.')
     @pokemon_ns.param(name='name', description='Name of pokemon (full or partial) to filter results by', type='string')
     @pokemon_ns.response(500, 'Internal server error', error_response)
     @pokemon_ns.marshal_with(pokemon_list_response, code=200)
     def get(self):
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 50, type=int)
-        query = Pokemon.query\
-            .filter(Pokemon.is_cosmetic_only == False)\
+        query = Pokemon.query \
+            .filter(Pokemon.is_cosmetic_only == False) \
             .order_by(Pokemon.pokedex_number, Pokemon.name)
 
-        if 'exclude_illegal' in request.args and (request.args['exclude_illegal'] is True or request.args['exclude_illegal'].lower() == "true"):
+        if 'exclude_illegal' in request.args and (
+                request.args['exclude_illegal'] is True or request.args['exclude_illegal'].lower() == "true"):
             query = query.filter(Pokemon.tier != "Illegal")
 
         if 'type_ids' in request.args:
             try:
                 type_ids = [int(id.strip()) for id in request.args.get('type_ids').split(',')]
             except ValueError:
-                api_v0.abort(400, 'Invalid type_ids')
+                api_v1.abort(400, 'Invalid type_ids')
             query = query.filter(Pokemon.types.any(PokemonType.id.in_(type_ids)))
 
         if 'name' in request.args:
@@ -78,14 +82,13 @@ class PokemonList(Resource):
             query = query.filter(Pokemon.name.like(search_string))
 
         try:
-            return paginate_query(query, page, limit)
-
+            response, data = paginate_query(query, page, limit)
+            return response
         except SQLAlchemyError as e:
-            api_v0.abort(500, f'Error querying database for pokemon types: {e}')
+            raise APIError(f'Error querying database for pokemon: {e}', code='DB_ERROR', status=500)
 
 
-"""Fetch details on on particular pokemon by ID"""
-pokemon_form_model = api_v0.model('PokemonForm', {
+pokemon_form_model = api_v1.model('PokemonForm', {
     'id': fields.Integer,
     'pokedex_number': fields.Integer,
     'name': fields.String,
@@ -94,22 +97,22 @@ pokemon_form_model = api_v0.model('PokemonForm', {
     'is_cosmetic_only': fields.Boolean(),
     'image_url': fields.String,
 })
-item_frequency_model = api_v0.inherit('ItemFrequency', item_model, {
+item_frequency_model = api_v1.inherit('ItemFrequency', item_model, {
     'count': fields.Integer,
 })
-tera_type_frequency_model = api_v0.inherit('TeraTypeFrequency', pokemon_type_model, {
+tera_type_frequency_model = api_v1.inherit('TeraTypeFrequency', pokemon_type_model, {
     'count': fields.Integer,
 })
-move_frequency_model = api_v0.inherit('MoveFrequency', move_model, {
+move_frequency_model = api_v1.inherit('MoveFrequency', move_model, {
     'count': fields.Integer,
 })
-ability_frequency_model = api_v0.inherit('AbilityFrequency', ability_model, {
+ability_frequency_model = api_v1.inherit('AbilityFrequency', ability_model, {
     'count': fields.Integer,
 })
-teammate_frequency_model = api_v0.inherit('TeammateFrequency', pokemon_base_species_model, {
+teammate_frequency_model = api_v1.inherit('TeammateFrequency', pokemon_base_species_model, {
     'count': fields.Integer,
 })
-pokemon_detail_model = api_v0.inherit('PokemonDetail', pokemon_model, {
+pokemon_detail_model = api_v1.inherit('PokemonDetail', pokemon_model, {
     'forms': fields.List(fields.Nested(pokemon_form_model)),
     'match_count': fields.Integer,
     'match_percent': fields.Float,
@@ -121,14 +124,16 @@ pokemon_detail_model = api_v0.inherit('PokemonDetail', pokemon_model, {
     'top_abilities': fields.List(fields.Nested(ability_frequency_model)),
     'top_teammates': fields.List(fields.Nested(teammate_frequency_model)),
 })
-pokemon_detail_response = api_v0.model('PokemonDetailResponse', {
+pokemon_detail_response = api_v1.model('PokemonDetailResponse', {
     'success': fields.Boolean,
     'data': fields.Nested(pokemon_detail_model)
 })
+"""Fetch details on on particular pokemon by ID, including usage statistics for the current format (or other format 
+specified via request parameter)"""
 @pokemon_ns.route('/<int:pokemon_id>')
 class PokemonDetail(Resource):
     @pokemon_ns.doc('get_pokemon')
-    @pokemon_ns.param('format_id', 'Format ID', type='integer')
+    @pokemon_ns.param('format_id', description='Format ID', type='integer')
     @pokemon_ns.response(404, 'Pokemon not found', error_response)
     @pokemon_ns.response(500, 'Internal server error', error_response)
     @pokemon_ns.marshal_with(pokemon_detail_response, code=200)
@@ -140,7 +145,7 @@ class PokemonDetail(Resource):
             else current_app.config['CURRENT_FORMAT_ID']
 
         # see if a cached response for this pokemon already exists, and if so, return that instead of recomputing stats
-        cache_key = f"pokemon_stats:v0:{format_id}:{pokemon_id}"
+        cache_key = f"pokemon_stats:v1:{format_id}:{pokemon_id}"
         cached_response = redis_cache.get(cache_key)
         if cached_response is not None:
             cached_response = json.loads(cached_response)
@@ -153,9 +158,9 @@ class PokemonDetail(Resource):
         try:
             pokemon_record = Pokemon.query.filter_by(id=pokemon_id).first()
         except SQLAlchemyError as e:
-            api_v0.abort(500, f'Error querying database for pokemon with ID {pokemon_id}: {e}')
+            raise APIError(f'Error querying database for pokemon with ID {pokemon_id}: {e}', code='DB_ERROR', status=500)
         if not pokemon_record:
-            api_v0.abort(404, f'Pokemon with ID {pokemon_id} not found')
+            raise NotFoundError('Pokemon with ID {pokemon_id} not found')
 
         response = {
             'success': True,
@@ -173,8 +178,7 @@ class PokemonDetail(Resource):
                         form_dict.pop('types')
                     response['data']['forms'].append(form_dict)
         except SQLAlchemyError as e:
-            api_v0.abort(500, f'Error querying database for pokemon with ID {pokemon_id}: {e}')
-
+            api_v1.abort(500, f'Error querying database for pokemon with ID {pokemon_id}: {e}')
 
         # create temporary table to pre-filter out only the relevant player_match_pokemon records for this format and
         # pokemon. Required as mysql was not materializing cte and queries were lagging.
@@ -223,7 +227,7 @@ class PokemonDetail(Resource):
             response['data']['match_percent'] = percent_used
 
             # find count and percentage of teams this mon is used in
-            team_count= db.session.execute(text(f"""
+            team_count = db.session.execute(text(f"""
                 SELECT 
                     count(distinct pmp.player_match_id) 
                 FROM
@@ -314,10 +318,14 @@ class PokemonDetail(Resource):
             # temp_filtered_pmp temporary table can't be reused in the same query, and when implemented as a cte it was not
             # being materialized but rather reconstructed 4 separate times, resulting in slow query times for mons with
             # many records in the PlayerMatchPokemon table.
-            move_1 = db.session.execute(text(f"""SELECT move_1_id, count(*) as move_count FROM {table_name} WHERE move_1_id IS NOT NULL GROUP BY move_1_id""")).fetchall()
-            move_2 = db.session.execute(text(f"""SELECT move_2_id, count(*) as move_count FROM {table_name} WHERE move_2_id IS NOT NULL GROUP BY move_2_id""")).fetchall()
-            move_3 = db.session.execute(text(f"""SELECT move_3_id, count(*) as move_count FROM {table_name} WHERE move_3_id IS NOT NULL GROUP BY move_3_id""")).fetchall()
-            move_4 = db.session.execute(text(f"""SELECT move_4_id, count(*) as move_count FROM {table_name} WHERE move_4_id IS NOT NULL GROUP BY move_4_id""")).fetchall()
+            move_1 = db.session.execute(text(
+                f"""SELECT move_1_id, count(*) as move_count FROM {table_name} WHERE move_1_id IS NOT NULL GROUP BY move_1_id""")).fetchall()
+            move_2 = db.session.execute(text(
+                f"""SELECT move_2_id, count(*) as move_count FROM {table_name} WHERE move_2_id IS NOT NULL GROUP BY move_2_id""")).fetchall()
+            move_3 = db.session.execute(text(
+                f"""SELECT move_3_id, count(*) as move_count FROM {table_name} WHERE move_3_id IS NOT NULL GROUP BY move_3_id""")).fetchall()
+            move_4 = db.session.execute(text(
+                f"""SELECT move_4_id, count(*) as move_count FROM {table_name} WHERE move_4_id IS NOT NULL GROUP BY move_4_id""")).fetchall()
 
             most_common_moves = Counter(dict(move_1))
             most_common_moves.update(dict(move_2))
@@ -364,14 +372,10 @@ class PokemonDetail(Resource):
 
         except Exception as e:
             logging.error(f"Error constructing stats for pokemon with id {pokemon_id}: {e}")
-            api_v0.abort(500, f'Error constructing stats for pokemon with id {pokemon_id}')
+            raise APIError(f'Error constructing stats for pokemon with id {pokemon_id}', code='PYTHON_ERROR',
+                           status=500)
 
         finally:
             db.session.execute(text(f"DROP TEMPORARY TABLE IF EXISTS {table_name}"))
 
         return response
-
-
-
-
-

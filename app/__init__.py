@@ -50,8 +50,11 @@ def create_app(config_class=None):
     from app.tasks import bp as tasks_bp
     app.register_blueprint(tasks_bp)
 
-    from app.api.v0 import bp as api_bp
-    app.register_blueprint(api_bp)
+    from app.api.v0 import bp as api_v0_bp
+    app.register_blueprint(api_v0_bp)
+
+    from app.api.v1 import bp as api_v1_bp
+    app.register_blueprint(api_v1_bp)
 
     # make sure all static image directories exist
     os.makedirs(app.config['STATIC_IMAGES_DIR'], exist_ok=True)
