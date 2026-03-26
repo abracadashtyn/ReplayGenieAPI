@@ -409,14 +409,14 @@ class SearchMatches(Resource):
         if len(query_dict['order_by']) > 0:
             query_string += f" ORDER BY {', '.join(query_dict['order_by'])}"
 
-        # print(f"Constructed query:\n{query_string}\n-------")
-
         page = search_data['page'] if 'page' in search_data else 1
         limit = search_data['limit'] if 'limit' in search_data else default_match_limit
         offset = (page - 1) * limit
-        match_search_results = db.session.execute(text(query_string), {"limit": limit + 1, "offset": offset}).all()
+        query_string += f" LIMIT {limit+1} OFFSET {offset}"
+
+        #print(f"Constructed query:\n{query_string}\n-------")
+        match_search_results = db.session.execute(text(query_string)).all()
         match_ids = [x[0] for x in match_search_results]
-        # print(f"Found {len(match_ids)} match ids in original search")
 
         response_json = {
             'success': True,
