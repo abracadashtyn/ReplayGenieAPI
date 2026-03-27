@@ -361,7 +361,7 @@ class SearchMatches(Resource):
                     query_dict = generate_pokemon_clauses(query_dict, search_data['team2']['pokemon'], 'pmp2')
 
             if 'team1' in search_data and 'team2' in search_data:
-                query_dict['where'].append(f"pm1.player_id!=pm2.player_id")
+                query_dict['where'].append(f"pm1.player_id<pm2.player_id")
 
         # join to player_match to filter on player data
         if 'player_id' in search_data:
@@ -416,7 +416,7 @@ class SearchMatches(Resource):
         offset = (page - 1) * limit
         query_string += f" LIMIT {limit+1} OFFSET {offset}"
 
-        #print(f"Constructed query:\n{query_string}\n-------")
+        print(f"Constructed query:\n{query_string}\n-------")
         match_search_results = db.session.execute(text(query_string)).all()
         match_ids = [x[0] for x in match_search_results]
 
