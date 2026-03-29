@@ -189,13 +189,14 @@ class MatchDetail(Resource):
             })
 
         response['data']['set_matches'] = []
-        set_matches = Match.query.filter(Match.set_id == match_record.set_id).all()
-        for set_match in set_matches:
-            response['data']['set_matches'].append({
-                'id': set_match.id,
-                'showdown_id': set_match.get_showdown_url_string(),
-                'position_in_set': set_match.position_in_set,
-            })
+        if match_record.set_id is not None:
+            set_matches = Match.query.filter(Match.set_id == match_record.set_id).all()
+            for set_match in set_matches:
+                response['data']['set_matches'].append({
+                    'id': set_match.id,
+                    'showdown_id': set_match.get_showdown_url_string(),
+                    'position_in_set': set_match.position_in_set,
+                })
         return response
 
 
