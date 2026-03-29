@@ -65,67 +65,64 @@ class FormatDetail(Resource):
     @format_ns.response(404, 'Format not found', error_response)
     @format_ns.response(500, 'Internal server error', error_response)
     def get(self, format_id):
-        # try to pull from cache first
+        # cache is split between format data itself and pokemon data. First, check if format data is present and if not,
+        # calculate it
+        format_cache_key = f"format_stats:v1:{format_id}"
+        response = redis_cache.get(format_cache_key)
+        if response is None:
+            format = Format.query.get(format_id)
+            if format is None:
+                raise NotFoundError(f'Format with id {format_id} not found.')
+            response = {
+                'success': True,
+                'data': format.to_dict()
+            }
+            # get total count of matches in this format
+            match_count = Match.query.filter_by(format_id=format_id).count()
+            response['data']['match_count'] = match_count
+            response['data']['team_count'] = match_count * 2
+
+        # now check if pokemon usage data is stored in the cache. If not, do a query to get counts of all pokemon used
+        top_pokemon_cache_key = f"format_pokemon_stats:v1:{format_id}"
+        top_pokemon_list = redis_cache.get(top_pokemon_cache_key)
+        if top_pokemon_list is None:
+            # no cached top mons, must do search again
+            top_pokemon_query = db.session.query(
+                case(
+                    (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
+                    else_=Pokemon.id
+                ).label("pokemon_id"),
+                func.count('*').label('pokemon_count')
+            ).select_from(
+                PlayerMatchPokemon
+            ).join(
+                PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
+            ).join(
+                Match, PlayerMatch.match_id == Match.id
+            ).join(
+                Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
+            ).filter(
+                Match.format_id == format_id,
+            ).group_by(
+                case(
+                    (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
+                    else_=Pokemon.id
+                ),
+            ).order_by(
+                func.count('*').desc()
+            )
+            top_pokemon_list = [(x[0], x[1]) for x in top_pokemon_query.all()]
+            redis_cache.setex(top_pokemon_cache_key, 2100, json.dumps(top_pokemon_list))
+            logging.info(f"Stored top pokemon list in cache with key {top_pokemon_cache_key}")
+        else:
+            top_pokemon_list = json.loads(top_pokemon_list)
+            logging.info(f"pulled top pokemon list from cache.")
+
         top_pokemon_count = request.args.get('top_pokemon_count', 6, type=int)
-        cache_key = f"format_stats:v1:{format_id}:{top_pokemon_count}"
-        cached_response = redis_cache.get(cache_key)
-        if cached_response is not None:
-            cached_response = json.loads(cached_response)
-            if cached_response['success'] is True:
-                logging.info(f"Serving FormatDetail response for format id {format_id} from cache.")
-                return cached_response
-
-        # if no cached response found, recalculate
-        format = Format.query.get(format_id)
-        if format is None:
-            raise NotFoundError(f'Format with id {format_id} not found.')
-
-        response = {
-            'success': True,
-            'data': format.to_dict()
-        }
-
-        # get total count of matches in this format
-        match_count = Match.query.filter_by(format_id=format_id).count()
-        response['data']['match_count'] = match_count
-        response['data']['team_count'] = match_count * 2
-
-        # get the top n used mons in this format (n=param value or 6 if none is provided)
-        top_mons_query = db.session.query(
-            case(
-                (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
-                else_=Pokemon.id
-            ).label("pokemon_id"),
-            func.count('*').label('pokemon_count')
-        ).select_from(
-            PlayerMatchPokemon
-        ).join(
-            PlayerMatch, PlayerMatchPokemon.player_match_id == PlayerMatch.id
-        ).join(
-            Match, PlayerMatch.match_id == Match.id
-        ).join(
-            Pokemon, PlayerMatchPokemon.pokemon_id == Pokemon.id
-        ).filter(
-            Match.format_id == format_id,
-        ).group_by(
-            case(
-                (Pokemon.is_cosmetic_only == True, Pokemon.base_species_id),
-                else_=Pokemon.id
-            ),
-        ).order_by(
-            func.count('*').desc()
-        ).limit(
-            request.args.get('top_pokemon_count', 6, type=int)
-        ).all()
         response['data']['top_pokemon'] = []
-        for pokemon_data in top_mons_query:
-            pokemon_dict = Pokemon.query.get(pokemon_data[0]).to_dict()
-            pokemon_dict['count'] = pokemon_data[1]
+        for pokemon in top_pokemon_list[:top_pokemon_count]:
+            pokemon_dict = Pokemon.query.get(pokemon[0]).to_dict()
+            pokemon_dict['count'] = pokemon[1]
             response['data']['top_pokemon'].append(pokemon_dict)
-
-        # store response in cache for faster retrieval next time. Cache duration is 35 min, but will be manually
-        # invalidated by ingestion method when new data is added
-        redis_cache.setex(cache_key, 2100, json.dumps(response))
-        logging.info(f"Stored response in cache with key {cache_key}")
 
         return response

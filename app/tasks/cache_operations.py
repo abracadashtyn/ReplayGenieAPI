@@ -14,7 +14,8 @@ def delete_keys(match_pattern):
     cursor = 0
     while True:
         cursor, keys = redis_cache.scan(cursor=cursor, match=match_pattern, count=100)
-        redis_cache.delete(*keys)
+        if len(keys) > 0:
+            redis_cache.delete(*keys)
         if cursor == 0:
             return
 
@@ -27,13 +28,26 @@ def clear_pokemon():
     delete_keys("pokemon_stats:v*:*:*")
 
 @cacheops.command('clear-format')
-def clear_pokemon():
-    delete_keys("format_stats:v*:*:*")
+def clear_format():
+    delete_keys("format_stats:v*")
+    delete_keys("format_pokemon_stats:v1:*")
+
+@cacheops.command('echo-keys')
+def echo_keys():
+    cursor = 0
+    while True:
+        cursor, keys = redis_cache.scan(cursor=cursor, match="*", count=100)
+        for key in keys:
+            print(key)
+        if cursor == 0:
+            return
 
 @cacheops.command('warm')
 @click.option('--format_id', '-f', type=int)
-@click.option('--api_version', '-v', type=int, default=0, help="Version of the API to warm the cache for.")
+@click.option('--api_version', '-v', type=int, default=1, help="Version of the API to warm the cache for.")
 def warm(format_id, api_version):
+    if format_id is None:
+        format_id = current_app.config.get('CURRENT_FORMAT_ID')
     format_url = f"{current_app.config['BASE_URL']}/api/v{api_version}/formats/{format_id}?top_pokemon_count=10"
     click.echo(f"Calling {format_url} to warm format cache")
     try:
